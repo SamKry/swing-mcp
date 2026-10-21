@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- `select_table_cell` can build a multi-selection: `toggle` adds or removes a row
+  (Ctrl/Cmd-click), `extend` selects the range from the anchor (Shift-click), and `rows`
+  sets several selected rows in one call (`[]` clears the selection). The result now
+  reports the resulting selection. `row` and `col` are optional (`col` defaults to 0), and
+  out-of-range indices are rejected instead of being passed to the table. Works for
+  `JTable` and `TableView`; the JavaFX demo table now allows multiple selection
+  ([#18](https://github.com/crosstech-solutions-bv/swing-mcp/issues/18)).
 
 ## [1.3.0] - 2026-09-14
 

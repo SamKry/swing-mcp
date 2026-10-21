@@ -727,18 +727,28 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         });
     }
 
+    /**
+     * Wire contract (InteractionService.selectTableCell): {@code row}/{@code col},
+     * optionally {@code toggle} (Ctrl-click) or {@code extend} (Shift-click from the
+     * focused cell), or {@code rows}, a list that becomes the whole selection.
+     */
     @Override
     public String selectTableCell(Map<String, Object> p) throws Exception {
-        int row = intOr(p, "row", -1);
         int col = intOr(p, "col", 0);
+        boolean toggle = Boolean.parseBoolean(str(p, "toggle"));
+        boolean extend = Boolean.parseBoolean(str(p, "extend"));
+        List<?> rows = p.get("rows") instanceof List<?> l ? l : null;
+        if (rows != null && (toggle || extend)) {
+            throw new IllegalArgumentException("rows replaces the whole selection; "
+                + "it cannot be combined with toggle or extend");
+        }
+        if (rows == null && !(p.get("row") instanceof Number)) {
+            throw new IllegalArgumentException("Provide row (optionally with toggle or extend) or rows");
+        }
         return onUi(() -> {
             Node n = nodeParam(p);
             if (!(n instanceof TableView<?> table)) {
                 throw new IllegalArgumentException("Component is not a TableView");
-            }
-            if (row < 0 || row >= table.getItems().size()) {
-                throw new IllegalArgumentException("row " + row + " out of range; "
-                    + table.getItems().size() + " row(s)");
             }
             if (col < 0 || col >= table.getColumns().size()) {
                 throw new IllegalArgumentException("col " + col + " out of range; "
@@ -749,9 +759,44 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             javafx.scene.control.TableColumn column = table.getColumns().get(col);
             @SuppressWarnings({"unchecked", "rawtypes"})
             javafx.scene.control.TableView.TableViewSelectionModel model = table.getSelectionModel();
-            model.clearAndSelect(row, column);
-            return "Selected cell (" + row + ", " + col + ")";
+            if (rows != null) {
+                model.clearSelection();
+                for (Object r : new java.util.LinkedHashSet<>(rows)) {
+                    model.select(requireRow(table, ((Number) r).intValue()), column);
+                }
+            } else {
+                int row = requireRow(table, intOr(p, "row", -1));
+                if (toggle && model.isSelected(row, column)) {
+                    model.clearSelection(row, column);
+                } else if (toggle) {
+                    model.select(row, column);
+                } else if (extend) {
+                    javafx.scene.control.TablePosition<?, ?> anchor = table.getFocusModel().getFocusedCell();
+                    int from = anchor == null || anchor.getRow() < 0 ? row : anchor.getRow();
+                    model.clearSelection();
+                    model.selectRange(Math.min(from, row), column, Math.max(from, row), column);
+                    // Keep the anchor focused so a further extend starts from it, as Shift-click does.
+                    table.getFocusModel().focus(from, column);
+                } else {
+                    model.clearAndSelect(row, column);
+                }
+            }
+            List<Integer> selected = new ArrayList<>(new java.util.TreeSet<Integer>(model.getSelectedIndices()));
+            String result = "Table selection: rows " + selected + ", column " + col;
+            if (model.getSelectionMode() == javafx.scene.control.SelectionMode.SINGLE
+                && (toggle || extend || rows != null && rows.size() > 1)) {
+                result += " (this table allows only one selected row)";
+            }
+            return result;
         });
+    }
+
+    private static int requireRow(TableView<?> table, int row) {
+        if (row < 0 || row >= table.getItems().size()) {
+            throw new IllegalArgumentException("row " + row + " out of range; "
+                + table.getItems().size() + " row(s)");
+        }
+        return row;
     }
 
     @Override
