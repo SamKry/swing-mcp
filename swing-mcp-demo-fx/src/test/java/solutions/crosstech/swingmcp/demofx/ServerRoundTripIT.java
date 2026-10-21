@@ -253,6 +253,20 @@ class ServerRoundTripIT {
     }
 
     @Test
+    @Order(6)
+    @DisplayName("take_screenshot writes a real PNG for a JavaFX window through the server")
+    void screenshot() throws Exception {
+        // The JavaFX toolkit used to answer with keys the server did not read, so the
+        // server wrote the bytes of base64("null") as the PNG (#24).
+        JsonNode shot = JSON.readTree(tool("take_screenshot", JSON.createObjectNode()));
+        byte[] png = Files.readAllBytes(Path.of(shot.path("path").asText()));
+        assertTrue(png.length > 100, "PNG too small: " + png.length + " bytes");
+        assertEquals((byte) 0x89, png[0]);
+        assertEquals('P', png[1]);
+        assertTrue(shot.path("width").asInt() > 0, shot.toString());
+    }
+
+    @Test
     @Order(7)
     @DisplayName("a modal Alert goes pending, is listed, and is dismissed — all through the server")
     void modalDialog() throws Exception {

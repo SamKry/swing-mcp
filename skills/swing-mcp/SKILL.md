@@ -40,7 +40,7 @@ description: Uses Swing MCP for efficient debugging, troubleshooting and automat
 ### Tool selection
 
 - **Automation/inspection**: `take_snapshot` (text-based component tree, faster, better for automation)
-- **Visual inspection**: `take_screenshot` (whole window, or a single component via `uid`); the PNG is saved to disk and the path returned — only set `returnImage: true` when the image must be inline
+- **Visual inspection**: `take_screenshot` (whole window, or a single component via `uid`); the PNG is saved to disk and the path returned — only set `returnImage: true` when the image must be inline; the default `PAINT` mode renders the UI even when other windows cover it (use `mode: SCREEN` only for native title bars or heavyweight popups)
 - **Structured data**: `get_table_data` for `JTable`/`TableView`, `get_list_items` for `JList`/`JTree` or `ListView`/`TreeView`
 - **Text entry**: `fill` sets a value directly (text components, `JSpinner`, editable `JComboBox` in Swing; `TextInputControl`, `Spinner`, editable `ComboBox` in JavaFX); `type_text` types character-by-character with key events when listeners/validation must fire
 - **Selection**: `select_option` for `JList`/`JComboBox`/`JTabbedPane` (or `ListView`/`ComboBox`/`ChoiceBox`/`TabPane` in JavaFX), `select_tree_node` for `JTree`/`TreeView` paths, `select_table_cell` for `JTable`/`TableView` (`toggle`/`extend`/`rows` for multi-row selections), `select_menu_item` / `select_context_menu_item` for menus (`JMenuBar`/`JPopupMenu` in Swing, `MenuBar`/`ContextMenu` in JavaFX)

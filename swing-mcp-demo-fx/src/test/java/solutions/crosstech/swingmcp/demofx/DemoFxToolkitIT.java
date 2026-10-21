@@ -257,8 +257,8 @@ class DemoFxToolkitIT {
     @DisplayName("a screenshot is produced from the scene graph")
     void screenshot() throws Exception {
         Map<String, Object> shot = toolkit.takeScreenshot(Map.of());
-        assertEquals("png", shot.get("format"));
-        assertNotNull(shot.get("base64"));
+        assertNotNull(shot.get("imageBase64"));
+        assertEquals("image/png", shot.get("mimeType"));
         assertTrue(((Integer) shot.get("width")) > 0);
     }
 

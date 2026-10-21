@@ -315,6 +315,9 @@ under `swing.mcp.screenshot-dir` and the file path is returned.
 |---|---|---|---|
 | `uid` | string | no | Component UID; omit for the whole window |
 | `returnImage` | boolean | no | When `true`, include the base64-encoded PNG data inline |
+| `mode` | string | no | `PAINT` (default): render the UI, unaffected by overlapping windows, no title bar; `SCREEN`: copy the screen pixels |
+
+Queued UI events are processed before capturing, so the image reflects the last action.
 
 ## Utilities
 
