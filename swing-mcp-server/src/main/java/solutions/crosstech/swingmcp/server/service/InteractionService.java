@@ -3,6 +3,7 @@ package solutions.crosstech.swingmcp.server.service;
 import solutions.crosstech.swingmcp.common.enums.CommandType;
 import solutions.crosstech.swingmcp.server.registry.SessionRegistry;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
@@ -90,7 +91,33 @@ public class InteractionService {
 
     /** Selects a table cell by row and column. */
     public Object selectTableCell(String uid, int row, int col) {
-        return registry.require().send(CommandType.SELECT_TABLE_CELL, Map.of("uid", uid, "row", row, "col", col));
+        return selectTableCell(uid, row, col, null, null, null);
+    }
+
+    /**
+     * Selects a table cell, or several rows. {@code toggle} and {@code extend}
+     * mirror Ctrl/Cmd- and Shift-click; {@code rows} replaces the whole selection.
+     */
+    public Object selectTableCell(String uid, Integer row, Integer col, Boolean toggle, Boolean extend,
+                                  List<Integer> rows) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("uid", uid);
+        if (row != null) {
+            params.put("row", row);
+        }
+        if (col != null) {
+            params.put("col", col);
+        }
+        if (Boolean.TRUE.equals(toggle)) {
+            params.put("toggle", true);
+        }
+        if (Boolean.TRUE.equals(extend)) {
+            params.put("extend", true);
+        }
+        if (rows != null) {
+            params.put("rows", rows);
+        }
+        return registry.require().send(CommandType.SELECT_TABLE_CELL, params);
     }
 
     /** Selects a menu item by path, e.g. "File > Save". */

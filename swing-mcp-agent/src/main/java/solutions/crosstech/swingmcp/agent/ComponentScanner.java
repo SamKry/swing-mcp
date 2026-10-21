@@ -93,7 +93,7 @@ public class ComponentScanner {
         Rectangle bounds = win.getBounds();
         return new SnapshotNode(
             getWindowTitle(win),
-            win.getClass().getSimpleName(),
+            ClassNames.displayName(win.getClass()),
             bounds.x, bounds.y, bounds.width, bounds.height,
             children,
             budget.truncated ? Boolean.TRUE : null
@@ -134,7 +134,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index++);
                 info.put("title", getWindowTitle(w));
-                info.put("class", w.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(w.getClass()));
                 Rectangle b = w.getBounds();
                 info.put("x", b.x);
                 info.put("y", b.y);
@@ -199,24 +199,43 @@ public class ComponentScanner {
 
     /**
      * Takes a screenshot of the active window or a specific component.
+     *
+     * <p>Called off the EDT. Pending events are processed first, so the image
+     * reflects the last action rather than lagging one repaint behind. Mode
+     * {@code PAINT} (default) renders the component into an image on the EDT:
+     * nothing covering it ends up in the picture and it works for windows in the
+     * background. Mode {@code SCREEN} copies the screen region with {@code Robot},
+     * for when native rendering, window decorations or heavyweight popups matter.</p>
      */
-    public Map<String, Object> takeScreenshot(Map<String, Object> params) throws IOException, AWTException {
-        if (GraphicsEnvironment.isHeadless()) {
-            throw new IllegalStateException("Cannot take screenshot in headless environment");
+    public Map<String, Object> takeScreenshot(Map<String, Object> params) throws Exception {
+        String mode = getString(params, "mode", "PAINT").toUpperCase();
+        if (!mode.equals("PAINT") && !mode.equals("SCREEN")) {
+            throw new IllegalArgumentException("Unknown screenshot mode: " + mode + ". Use PAINT or SCREEN.");
         }
-        Component target;
-        String uid = (String) params.get("uid");
-        if (uid != null && !uid.isBlank()) {
-            target = resolveUid(uid);
-        } else {
-            target = getTargetWindow(params);
+        if (mode.equals("SCREEN") && GraphicsEnvironment.isHeadless()) {
+            throw new IllegalStateException("Cannot capture the screen in a headless environment; use mode PAINT");
         }
-        if (target == null) {
-            throw new IllegalStateException("No target component or window for screenshot");
-        }
-        Robot robot = new Robot();
-        Rectangle bounds = new Rectangle(target.getLocationOnScreen(), target.getSize());
-        BufferedImage img = robot.createScreenCapture(bounds);
+        awaitIdleEventQueue();
+        BufferedImage img = invokeAndWaitQuietly(() -> {
+            Component target;
+            String uid = (String) params.get("uid");
+            if (uid != null && !uid.isBlank()) {
+                target = resolveUid(uid);
+            } else {
+                target = getTargetWindow(params);
+            }
+            if (target == null) {
+                throw new IllegalStateException("No target component or window for screenshot");
+            }
+            if (mode.equals("PAINT")) {
+                return paintToImage(target);
+            }
+            if (!target.isShowing()) {
+                throw new IllegalStateException("Component is not on screen; use mode PAINT to render it anyway");
+            }
+            // Robot.createScreenCapture only reads pixels; it does not wait for the EDT.
+            return new Robot().createScreenCapture(new Rectangle(target.getLocationOnScreen(), target.getSize()));
+        });
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(img, "PNG", baos);
         String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
@@ -225,7 +244,65 @@ public class ComponentScanner {
         result.put("mimeType", "image/png");
         result.put("width", img.getWidth());
         result.put("height", img.getHeight());
+        result.put("mode", mode);
         return result;
+    }
+
+    /**
+     * Renders a component, or a window's content, into an image. Must run on the EDT.
+     * A Swing window is rendered through its root pane (menu bar, content, and
+     * lightweight popups), without the native title bar.
+     */
+    private BufferedImage paintToImage(Component target) {
+        Component painted = target instanceof javax.swing.RootPaneContainer rpc && rpc.getRootPane() != null
+            ? rpc.getRootPane() : target;
+        int width = painted.getWidth();
+        int height = painted.getHeight();
+        if (width <= 0 || height <= 0) {
+            throw new IllegalStateException("Component has no size (" + width + "x" + height
+                + "); it is probably not laid out or not displayed");
+        }
+        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        try {
+            // Non-opaque components show their ancestors' background on screen.
+            g.setColor(backgroundOf(painted));
+            g.fillRect(0, 0, width, height);
+            if (painted.isShowing()) {
+                // paintAll also renders heavyweight children (e.g. an AWT Canvas).
+                painted.paintAll(g);
+            } else {
+                painted.paint(g);
+            }
+        } finally {
+            g.dispose();
+        }
+        return img;
+    }
+
+    private static java.awt.Color backgroundOf(Component comp) {
+        for (Component c = comp; c != null; c = c.getParent()) {
+            if (c.isOpaque() && c.getBackground() != null) {
+                return c.getBackground();
+            }
+        }
+        return comp.getBackground() != null ? comp.getBackground() : java.awt.Color.WHITE;
+    }
+
+    /**
+     * Lets the EDT process what is already queued (listeners, revalidation,
+     * repaints posted by the last action) before an image is taken. Bounded, so a
+     * busy application cannot stall the screenshot.
+     */
+    private void awaitIdleEventQueue() throws Exception {
+        if (SwingUtilities.isEventDispatchThread()) {
+            return;
+        }
+        java.awt.EventQueue queue = Toolkit.getDefaultToolkit().getSystemEventQueue();
+        long deadline = System.currentTimeMillis() + 1000;
+        do {
+            SwingUtilities.invokeAndWait(() -> { });
+        } while (queue.peekEvent() != null && System.currentTimeMillis() < deadline);
     }
 
     /**
@@ -274,7 +351,7 @@ public class ComponentScanner {
         } else if (comp instanceof JComboBox<?> combo && combo.isEditable()) {
             combo.setSelectedItem(text);
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + ClassNames.displayName(comp.getClass()));
         }
         return "Filled: " + uid;
     }
@@ -333,7 +410,7 @@ public class ComponentScanner {
                 tabs.setSelectedIndex(match);
             }
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + ClassNames.displayName(comp.getClass()));
         }
         return "Option selected on: " + uid;
     }
@@ -361,19 +438,56 @@ public class ComponentScanner {
     }
 
     /**
-     * Selects a table cell by row and column.
+     * Selects a table cell by row and column, like a mouse click on it.
+     * Params: uid, row, col (default 0), toggle (Ctrl/Cmd-click), extend
+     * (Shift-click), or rows (a list of rows that becomes the whole selection).
      */
     public String selectTableCell(Map<String, Object> params) {
         String uid = getString(params, "uid");
         Component comp = resolveUid(uid);
-        int row = getInt(params, "row", 0);
         int col = getInt(params, "col", 0);
+        boolean toggle = getBoolean(params, "toggle", false);
+        boolean extend = getBoolean(params, "extend", false);
 
         if (!(comp instanceof JTable table)) {
             throw new IllegalArgumentException("Component " + uid + " is not a JTable");
         }
-        table.changeSelection(row, col, false, false);
-        return "Table cell selected: [" + row + "," + col + "]";
+        requireIndex("col", col, table.getColumnCount());
+        if (params.get("rows") instanceof List<?> rows) {
+            if (toggle || extend) {
+                throw new IllegalArgumentException("rows replaces the whole selection; "
+                    + "it cannot be combined with toggle or extend");
+            }
+            table.clearSelection();
+            boolean first = true;
+            for (Object r : new java.util.LinkedHashSet<>(rows)) {
+                int row = r instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(r));
+                requireIndex("row", row, table.getRowCount());
+                table.changeSelection(row, col, !first, false);
+                first = false;
+            }
+        } else {
+            if (params.get("row") == null) {
+                throw new IllegalArgumentException("Provide row (optionally with toggle or extend) or rows");
+            }
+            int row = getInt(params, "row", 0);
+            requireIndex("row", row, table.getRowCount());
+            table.changeSelection(row, col, toggle, extend);
+        }
+        String selection = "Table selection: rows " + java.util.Arrays.toString(table.getSelectedRows())
+            + ", column " + table.getSelectedColumn();
+        if (table.getSelectionModel().getSelectionMode() == javax.swing.ListSelectionModel.SINGLE_SELECTION
+            && (toggle || extend || params.get("rows") instanceof List<?> l && l.size() > 1)) {
+            selection += " (this table allows only one selected row)";
+        }
+        return selection;
+    }
+
+    private static void requireIndex(String what, int index, int count) {
+        if (index < 0 || index >= count) {
+            throw new IllegalArgumentException(what + " " + index + " is out of range; the table has "
+                + count + (what.equals("row") ? " row(s)" : " column(s)"));
+        }
     }
 
     /**
@@ -775,7 +889,7 @@ public class ComponentScanner {
             }
         }
         if (any || "CLASS".equals(by)) {
-            if (comp.getClass().getSimpleName().toLowerCase().contains(query)) {
+            if (ClassNames.matches(comp.getClass(), query, true)) {
                 return true;
             }
         }
@@ -1096,7 +1210,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index);
                 info.put("title", dialog.getTitle());
-                info.put("class", dialog.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(dialog.getClass()));
                 info.put("modal", dialog.isModal());
                 JOptionPane pane = findDescendant(dialog, JOptionPane.class);
                 JFileChooser chooser = findDescendant(dialog, JFileChooser.class);
@@ -1239,7 +1353,7 @@ public class ComponentScanner {
             throw new IllegalStateException("No active window");
         }
         if (!(win instanceof Frame frame)) {
-            throw new IllegalArgumentException("Active window is not a Frame: " + win.getClass().getSimpleName());
+            throw new IllegalArgumentException("Active window is not a Frame: " + ClassNames.displayName(win.getClass()));
         }
         WindowState state = WindowState.valueOf(getString(params, "state").toUpperCase());
         int extended = switch (state) {
@@ -1325,7 +1439,7 @@ public class ComponentScanner {
         Rectangle bounds = comp.getBounds();
         ComponentDescriptor desc = new ComponentDescriptor(
             uid,
-            comp.getClass().getSimpleName(),
+            ClassNames.displayName(comp.getClass()),
             comp.getName(),
             text,
             comp.isEnabled(),
@@ -1413,7 +1527,7 @@ public class ComponentScanner {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("uid", assignUid(comp));
         info.put("class", comp.getClass().getName());
-        info.put("simpleName", comp.getClass().getSimpleName());
+        info.put("simpleName", ClassNames.displayName(comp.getClass()));
         info.put("name", comp.getName());
         info.put("text", extractText(comp));
         info.put("enabled", comp.isEnabled());
@@ -1476,7 +1590,7 @@ public class ComponentScanner {
         if (w instanceof java.awt.Dialog d) {
             return d.getTitle();
         }
-        return w.getClass().getSimpleName();
+        return ClassNames.displayName(w.getClass());
     }
 
     private JScrollPane findScrollPane(Component comp) {
@@ -1768,11 +1882,69 @@ public class ComponentScanner {
     }
 
     private Object parseSpinnerValue(JSpinner spinner, String text) {
-        javax.swing.SpinnerModel model = spinner.getModel();
-        if (model instanceof javax.swing.SpinnerNumberModel) {
-            return Double.parseDouble(text);
+        return spinnerValue(spinner.getModel(), text);
+    }
+
+    /**
+     * Converts {@code text} to the value a user typing into the spinner would
+     * commit. A {@link javax.swing.SpinnerNumberModel} keeps the number class of
+     * its current value (an integer model stays {@code Integer}), so application
+     * code casting {@code getValue()} keeps working; values outside the model's
+     * bounds are rejected instead of being set silently.
+     */
+    static Object spinnerValue(javax.swing.SpinnerModel model, String text) {
+        if (!(model instanceof javax.swing.SpinnerNumberModel numbers)) {
+            return text;
         }
-        return text;
+        java.math.BigDecimal parsed;
+        try {
+            parsed = new java.math.BigDecimal(text.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Spinner expects a number, got \"" + text + "\"");
+        }
+        Class<?> type = numbers.getNumber() == null ? Double.class : numbers.getNumber().getClass();
+        Number value;
+        try {
+            if (type == Integer.class) {
+                value = parsed.intValueExact();
+            } else if (type == Long.class) {
+                value = parsed.longValueExact();
+            } else if (type == Short.class) {
+                value = parsed.shortValueExact();
+            } else if (type == Byte.class) {
+                value = parsed.byteValueExact();
+            } else if (type == java.math.BigInteger.class) {
+                value = parsed.toBigIntegerExact();
+            } else if (type == java.math.BigDecimal.class) {
+                value = parsed;
+            } else if (type == Float.class) {
+                value = parsed.floatValue();
+            } else {
+                value = parsed.doubleValue();
+            }
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("Spinner holds " + type.getSimpleName()
+                + " values; \"" + text + "\" is not a whole number in that range");
+        }
+        if (outOfBounds(numbers.getMinimum(), value, true) || outOfBounds(numbers.getMaximum(), value, false)) {
+            throw new IllegalArgumentException("Value " + value + " is outside the spinner's range ["
+                + numbers.getMinimum() + ", " + numbers.getMaximum() + "]");
+        }
+        return value;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean outOfBounds(Comparable bound, Number value, boolean lower) {
+        if (bound == null) {
+            return false;
+        }
+        try {
+            int cmp = bound.compareTo(value);
+            return lower ? cmp > 0 : cmp < 0;
+        } catch (ClassCastException e) {
+            // Bound of a different Number class than the value: let the model decide.
+            return false;
+        }
     }
 
     private String getString(Map<String, Object> params, String key) {

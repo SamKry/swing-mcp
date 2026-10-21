@@ -64,6 +64,11 @@ editable `ComboBox` (JavaFX).
 | `uid` | string | yes | Component UID |
 | `text` | string | yes | Text or value to enter |
 
+**Notes:** a numeric `JSpinner` receives a value of its model's own number
+class (`Integer`, `Long`, `Double`, …), as if the user had typed it. A
+fraction for an integer spinner, or a value outside the spinner's
+minimum/maximum, is rejected with an error instead of being set.
+
 ## `select_option`
 
 Select an option in a `JList`, `JComboBox`, or `JTabbedPane` (Swing) — or a
@@ -89,13 +94,25 @@ Select a `JTree` (Swing) or `TreeView` (JavaFX) node by path.
 
 ## `select_table_cell`
 
-Select a `JTable` (Swing) or `TableView` (JavaFX) cell.
+Select a `JTable` (Swing) or `TableView` (JavaFX) cell, like a mouse click on
+it, or several rows.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | `JTable` (Swing) or `TableView` (JavaFX) component UID |
-| `row` | number | yes | Zero-based row index |
-| `col` | number | yes | Zero-based column index |
+| `row` | number | no | Zero-based row index; required unless `rows` is given |
+| `col` | number | no | Zero-based column index (default 0) |
+| `toggle` | boolean | no | Add the row to, or remove it from, the selection (Ctrl/Cmd-click) |
+| `extend` | boolean | no | Select the range from the anchor row to `row` (Shift-click) |
+| `rows` | number[] | no | Rows that become the whole selection; `[]` clears it |
+
+**Returns:** the resulting selection, e.g. `Table selection: rows [1, 3], column 0`.
+
+**Notes:**
+- `toggle` and `extend` map to `JTable.changeSelection(row, col, toggle, extend)`
+  in Swing. In JavaFX the anchor for `extend` is the focused cell.
+- `rows` cannot be combined with `toggle` or `extend`.
+- A table in single-selection mode keeps one row; the result says so.
 
 ## `select_menu_item`
 
