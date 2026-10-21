@@ -19,6 +19,10 @@ Launch a Java desktop application (Swing or JavaFX) with the swing-mcp agent pre
 | `command` | string | yes | Full java command line, e.g. `java -jar /path/to/app.jar` |
 | `workingDir` | string | no | Working directory for the launched process |
 | `sessionId` | string | no | Session id; auto-generated when omitted |
+| `env` | object | no | Environment variables for the launched process, e.g. `{"HDF5_PLUGIN_PATH": "./plugins"}` |
+
+The `-javaagent` argument goes right after the java launcher, so wrappers such as
+`env VAR=value java -jar app.jar` work and JVM options stay in `command`.
 
 Returns session info (session id, mode, PID, agent port). The new session
 becomes the active one.
@@ -53,7 +57,20 @@ Make a session the active one that other tools operate on.
 
 ### `app_status`
 Get the status of the active session: `connected`, `sessionId`,
-`sessionCount`, `alive`, `mode`, `pid`, `agentPort`, `description`.
+`sessionCount`, `alive`, `mode`, `pid`, `agentPort`, `description`, and
+`outputFile` for a launched application.
+
+### `get_app_output`
+Read the captured stdout/stderr of a launched application: the last lines, or
+the lines after `sinceLine` to follow new output. Returns `totalLines`,
+`fromLine`, `toLine`, `text`, and `more` when lines were left out (at most 500
+lines / ~40,000 characters per call).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tail` | number | no | Number of last lines (default 50, max 500) |
+| `sinceLine` | number | no | Return the lines after this line number instead |
+| `sessionId` | string | no | Session id; the active session when omitted |
 
 ## Inspection
 
@@ -82,6 +99,10 @@ Find components by text, name, tooltip, or class without a full snapshot.
 |---|---|---|---|
 | `query` | string | yes | Search string (case-insensitive substring match) |
 | `by` | string | no | `TEXT`, `NAME`, `TOOLTIP`, `CLASS`, or `ANY` (default) |
+
+`CLASS` also matches superclasses (so an anonymous `new JTabbedPane() { ... }` is found by
+`TabbedPane`), an anonymous class's own name (`MainFrame$1`), and, for a query containing a dot,
+the fully qualified name. Snapshots report anonymous classes as e.g. `JTabbedPane (anonymous)`.
 
 ### `get_table_data`
 Extract the model contents of a `JTable` (Swing) or `TableView` (JavaFX):
@@ -180,6 +201,9 @@ Set the text/value of a text component, `JSpinner`, `JSlider`, or editable
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
 | `text` | string | yes | Text or value to enter |
+
+A numeric `JSpinner` gets a value of its model's number class (`Integer`, `Double`, …);
+fractions for integer spinners and out-of-range values are rejected.
 
 ### `select_option`
 Select an option in a `JList`, `JComboBox`, or `JTabbedPane` (Swing) — or a

@@ -58,6 +58,11 @@ editable `ComboBox` (JavaFX).
 | `uid` | string | yes | Component UID |
 | `text` | string | yes | Text or value to enter |
 
+**Notes:** a numeric `JSpinner` receives a value of its model's own number
+class (`Integer`, `Long`, `Double`, …), as if the user had typed it. A
+fraction for an integer spinner, or a value outside the spinner's
+minimum/maximum, is rejected with an error instead of being set.
+
 ## `select_option`
 
 Select an option in a `JList`, `JComboBox`, or `JTabbedPane` (Swing) — or a
