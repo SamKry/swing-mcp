@@ -20,20 +20,31 @@ public class InteractionTools {
 
     @McpTool(name = "click",
         annotations = @McpTool.McpAnnotations(title = "Click", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
-        description = "Click a component by UID. Buttons are clicked directly; other components via mouse emulation.")
+        description = """
+        Click a component by UID. A plain left click on a button is a direct click; anything else \
+        is delivered as mouse events at x/y (default: center) to the component under that point, \
+        which works while the window is covered or in the background. Use x/y to hit content drawn \
+        inside one component (chart points, canvas items) and modifiers for Ctrl/Shift-clicks.""")
     public String click(
             @McpToolParam(description = "Component UID from a snapshot") String uid,
             @McpToolParam(description = "Mouse button: LEFT, RIGHT, or MIDDLE (default LEFT)", required = false) String button,
-            @McpToolParam(description = "Click type: SINGLE or DOUBLE (default SINGLE)", required = false) String clickType) {
-        return ToolJson.toJson(interactionService.click(uid, button, clickType));
+            @McpToolParam(description = "Click type: SINGLE or DOUBLE (default SINGLE)", required = false) String clickType,
+            @McpToolParam(description = "X offset from the component's left edge (default: center)", required = false) Integer x,
+            @McpToolParam(description = "Y offset from the component's top edge (default: center)", required = false) Integer y,
+            @McpToolParam(description = "Modifier keys held during the click, e.g. CTRL, SHIFT, CTRL+SHIFT, META (Cmd), SHORTCUT (Ctrl, Cmd on macOS)", required = false) String modifiers,
+            @McpToolParam(description = "Swing: move the real OS mouse instead (window must be in front and uncovered)", required = false) Boolean robot) {
+        return ToolJson.toJson(interactionService.click(uid, button, clickType, x, y, modifiers, robot));
     }
 
     @McpTool(name = "hover",
         annotations = @McpTool.McpAnnotations(title = "Hover component", readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false),
-        description = "Move the mouse over a component by UID to trigger hover effects and tooltips.")
+        description = "Move the mouse over a component by UID, at x/y (default: center), to trigger hover effects and tooltips.")
     public String hover(
-            @McpToolParam(description = "Component UID from a snapshot") String uid) {
-        return ToolJson.toJson(interactionService.hover(uid));
+            @McpToolParam(description = "Component UID from a snapshot") String uid,
+            @McpToolParam(description = "X offset from the component's left edge (default: center)", required = false) Integer x,
+            @McpToolParam(description = "Y offset from the component's top edge (default: center)", required = false) Integer y,
+            @McpToolParam(description = "Swing: move the real OS mouse instead of sending events", required = false) Boolean robot) {
+        return ToolJson.toJson(interactionService.hover(uid, x, y, robot));
     }
 
     @McpTool(name = "focus",
@@ -135,11 +146,19 @@ public class InteractionTools {
 
     @McpTool(name = "drag",
         annotations = @McpTool.McpAnnotations(title = "Drag", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
-        description = "Drag from one component to another using mouse emulation. Swing sessions only.")
+        description = """
+        Drag with the left button from a point in one component to a point in another, or within one \
+        component (slider, divider, chart zoom). Points default to the centers. Delivered as mouse \
+        events; native drag-and-drop between components needs robot=true. Swing sessions only.""")
     public String drag(
             @McpToolParam(description = "Source component UID") String fromUid,
-            @McpToolParam(description = "Target component UID") String toUid) {
-        return ToolJson.toJson(interactionService.drag(fromUid, toUid));
+            @McpToolParam(description = "Target component UID (default: fromUid)", required = false) String toUid,
+            @McpToolParam(description = "X offset in the source component (default: center)", required = false) Integer fromX,
+            @McpToolParam(description = "Y offset in the source component (default: center)", required = false) Integer fromY,
+            @McpToolParam(description = "X offset in the target component (default: center)", required = false) Integer toX,
+            @McpToolParam(description = "Y offset in the target component (default: center)", required = false) Integer toY,
+            @McpToolParam(description = "Move the real OS mouse, as native drag-and-drop requires (window must be in front)", required = false) Boolean robot) {
+        return ToolJson.toJson(interactionService.drag(fromUid, toUid, fromX, fromY, toX, toY, robot));
     }
 
     @McpTool(name = "scroll",

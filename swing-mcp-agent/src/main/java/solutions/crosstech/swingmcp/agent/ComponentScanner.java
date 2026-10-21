@@ -69,6 +69,8 @@ public class ComponentScanner {
     private final ConcurrentHashMap<String, Component> uidToComponent = new ConcurrentHashMap<>();
     private final Map<Component, String> componentToUid = new WeakHashMap<>();
     private Window activeWindow;
+    /** Component the last event-based hover entered; EDT only. Weak, so it cannot pin a closed window. */
+    private java.lang.ref.WeakReference<Component> lastHovered = new java.lang.ref.WeakReference<>(null);
 
     /**
      * Takes a snapshot of the current active window's component tree.
@@ -306,34 +308,171 @@ public class ComponentScanner {
     }
 
     /**
-     * Clicks a component identified by UID.
+     * Clicks a component identified by UID. Runs on the EDT.
+     *
+     * <p>A plain left click on a button is a {@code doClick()}. Anything else is
+     * a mouse click at {@code x}/{@code y} (relative to the component's top-left
+     * corner, default its center) with optional {@code modifiers}, delivered as
+     * mouse events to the component under that point, so it works while the
+     * window is covered or in the background. {@code robot=true} moves the real
+     * mouse instead, for code that needs OS-level input.</p>
      */
     public String click(Map<String, Object> params) throws AWTException {
         String uid = getString(params, "uid");
         Component comp = resolveUid(uid);
-        String buttonStr = getString(params, "button", "LEFT");
-        String clickTypeStr = getString(params, "clickType", "SINGLE");
+        String buttonStr = getString(params, "button", "LEFT").toUpperCase();
+        int clicks = "DOUBLE".equalsIgnoreCase(getString(params, "clickType", "SINGLE")) ? 2 : 1;
+        int modifiers = parseModifiers(getString(params, "modifiers", ""));
+        boolean robot = getBoolean(params, "robot", false);
+        boolean atPoint = params.get("x") != null || params.get("y") != null;
 
-        if (comp instanceof AbstractButton btn) {
+        if (comp instanceof AbstractButton btn && "LEFT".equals(buttonStr) && modifiers == 0 && !robot && !atPoint) {
             btn.doClick();
             return "Clicked button: " + btn.getText();
         }
-
-        if (!GraphicsEnvironment.isHeadless()) {
-            Robot robot = new Robot();
-            Point loc = comp.getLocationOnScreen();
-            int cx = loc.x + comp.getWidth() / 2;
-            int cy = loc.y + comp.getHeight() / 2;
-            int mask = getMouseMask(buttonStr);
-            robot.mouseMove(cx, cy);
-            robot.mousePress(mask);
-            robot.mouseRelease(mask);
-            if ("DOUBLE".equalsIgnoreCase(clickTypeStr)) {
-                robot.mousePress(mask);
-                robot.mouseRelease(mask);
+        Point p = pointIn(comp, params, "x", "y");
+        if (robot) {
+            robotClick(comp, p, getMouseMask(buttonStr), clicks, modifiers);
+        } else {
+            Component target = dispatchClick(comp, p, mouseButton(buttonStr), clicks, modifiers);
+            if (target != comp) {
+                return "Clicked " + simpleNameOf(target) + " inside " + uid + " at (" + p.x + "," + p.y + ")";
             }
         }
-        return "Clicked component: " + uid;
+        return "Clicked component: " + uid + " at (" + p.x + "," + p.y + ")";
+    }
+
+    private static String simpleNameOf(Component c) {
+        String name = c.getClass().getSimpleName();
+        return name.isEmpty() ? c.getClass().getName() : name;
+    }
+
+    /**
+     * The point a pointer command targets, relative to {@code comp}: the given
+     * coordinates, or the center for any that are missing. Must lie inside it.
+     */
+    private Point pointIn(Component comp, Map<String, Object> params, String xKey, String yKey) {
+        int x = getInt(params, xKey, comp.getWidth() / 2);
+        int y = getInt(params, yKey, comp.getHeight() / 2);
+        if (x < 0 || y < 0 || x >= comp.getWidth() || y >= comp.getHeight()) {
+            throw new IllegalArgumentException("Point (" + x + "," + y + ") is outside the component, which is "
+                + comp.getWidth() + "x" + comp.getHeight() + "; " + xKey + "/" + yKey
+                + " are relative to its top-left corner");
+        }
+        return new Point(x, y);
+    }
+
+    /**
+     * Delivers a click as mouse events to the deepest component at {@code p}
+     * (relative to {@code comp}), like the real mouse would. Must run on the EDT.
+     *
+     * @return the component that received the events
+     */
+    private Component dispatchClick(Component comp, Point p, int button, int clicks, int modifiers) {
+        Component target = deepestAt(comp, p);
+        Point tp = SwingUtilities.convertPoint(comp, p, target);
+        int buttonMask = InputEvent.getMaskForButton(button);
+        boolean rightButton = button == MouseEvent.BUTTON3;
+        // Windows reports the popup trigger on release, other platforms on press.
+        boolean triggerOnRelease = System.getProperty("os.name", "").startsWith("Windows");
+        long now = System.currentTimeMillis();
+        target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_MOVED, now, modifiers,
+            tp.x, tp.y, 0, false, MouseEvent.NOBUTTON));
+        for (int count = 1; count <= clicks; count++) {
+            target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_PRESSED, now, modifiers | buttonMask,
+                tp.x, tp.y, count, rightButton && !triggerOnRelease, button));
+            target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_RELEASED, now, modifiers,
+                tp.x, tp.y, count, rightButton && triggerOnRelease, button));
+            target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_CLICKED, now, modifiers,
+                tp.x, tp.y, count, false, button));
+        }
+        return target;
+    }
+
+    private static Component deepestAt(Component comp, Point p) {
+        Component deepest = SwingUtilities.getDeepestComponentAt(comp, p.x, p.y);
+        return deepest != null ? deepest : comp;
+    }
+
+    private void robotClick(Component comp, Point p, int buttonMask, int clicks, int modifiers) throws AWTException {
+        requireShowing(comp);
+        Robot robot = new Robot();
+        Point loc = comp.getLocationOnScreen();
+        List<Integer> keys = modifierKeys(modifiers);
+        keys.forEach(robot::keyPress);
+        try {
+            robot.mouseMove(loc.x + p.x, loc.y + p.y);
+            for (int i = 0; i < clicks; i++) {
+                robot.mousePress(buttonMask);
+                robot.mouseRelease(buttonMask);
+            }
+        } finally {
+            for (int i = keys.size() - 1; i >= 0; i--) {
+                robot.keyRelease(keys.get(i));
+            }
+        }
+    }
+
+    private static void requireShowing(Component comp) {
+        if (GraphicsEnvironment.isHeadless()) {
+            throw new IllegalStateException("robot input needs a display");
+        }
+        if (!comp.isShowing()) {
+            throw new IllegalStateException("Component is not on screen, so the real mouse cannot reach it; "
+                + "omit robot to deliver the events directly");
+        }
+    }
+
+    /**
+     * Parses modifier names such as {@code "CTRL+SHIFT"} into an extended
+     * modifier mask. {@code SHORTCUT} is the platform's menu shortcut key
+     * (Ctrl, or Cmd on macOS).
+     */
+    static int parseModifiers(String modifiers) {
+        int mask = 0;
+        for (String part : modifiers.toUpperCase().split("[+,\\s]+")) {
+            mask |= switch (part) {
+                case "" -> 0;
+                case "CTRL", "CONTROL" -> InputEvent.CTRL_DOWN_MASK;
+                case "SHIFT" -> InputEvent.SHIFT_DOWN_MASK;
+                case "ALT", "OPTION" -> InputEvent.ALT_DOWN_MASK;
+                case "META", "CMD", "COMMAND" -> InputEvent.META_DOWN_MASK;
+                case "ALT_GRAPH", "ALTGR" -> InputEvent.ALT_GRAPH_DOWN_MASK;
+                case "SHORTCUT" -> GraphicsEnvironment.isHeadless()
+                    ? InputEvent.CTRL_DOWN_MASK : Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+                default -> throw new IllegalArgumentException("Unknown modifier: " + part
+                    + ". Use CTRL, SHIFT, ALT, META (Cmd), or SHORTCUT, combined with '+'");
+            };
+        }
+        return mask;
+    }
+
+    private static List<Integer> modifierKeys(int modifiers) {
+        List<Integer> keys = new ArrayList<>();
+        if ((modifiers & InputEvent.CTRL_DOWN_MASK) != 0) {
+            keys.add(KeyEvent.VK_CONTROL);
+        }
+        if ((modifiers & InputEvent.SHIFT_DOWN_MASK) != 0) {
+            keys.add(KeyEvent.VK_SHIFT);
+        }
+        if ((modifiers & InputEvent.ALT_DOWN_MASK) != 0) {
+            keys.add(KeyEvent.VK_ALT);
+        }
+        if ((modifiers & InputEvent.META_DOWN_MASK) != 0) {
+            keys.add(KeyEvent.VK_META);
+        }
+        if ((modifiers & InputEvent.ALT_GRAPH_DOWN_MASK) != 0) {
+            keys.add(KeyEvent.VK_ALT_GRAPH);
+        }
+        return keys;
+    }
+
+    private static int mouseButton(String button) {
+        return switch (button.toUpperCase()) {
+            case "RIGHT" -> MouseEvent.BUTTON3;
+            case "MIDDLE" -> MouseEvent.BUTTON2;
+            default -> MouseEvent.BUTTON1;
+        };
     }
 
     /**
@@ -735,25 +874,85 @@ public class ComponentScanner {
             + "to the application directly.");
     }
 
+    /** Intermediate positions of a drag, so drag listeners and gesture thresholds see motion. */
+    private static final int DRAG_STEPS = 10;
+
     /**
-     * Drags from one component to another using Robot.
+     * Drags with the left button from a point in one component to a point in
+     * another (or the same) component. Called off the EDT.
+     *
+     * <p>Points are {@code fromX}/{@code fromY} and {@code toX}/{@code toY},
+     * relative to each component's top-left corner, default its center;
+     * {@code toUid} defaults to {@code fromUid}. By default the press, drag and
+     * release are delivered as mouse events to the component under the start
+     * point, as AWT does for a real drag; this covers drags inside a component
+     * (sliders, dividers, chart zoom, canvas handles). Native drag-and-drop
+     * between components needs the real mouse: {@code robot=true}.</p>
      */
-    public String drag(Map<String, Object> params) throws AWTException {
+    public String drag(Map<String, Object> params) throws Exception {
         String fromUid = getString(params, "fromUid");
-        String toUid = getString(params, "toUid");
-        if (GraphicsEnvironment.isHeadless()) {
-            throw new IllegalStateException("Cannot drag in headless environment");
-        }
+        String toUid = getString(params, "toUid", fromUid);
+        boolean robot = getBoolean(params, "robot", false);
         Component from = resolveUid(fromUid);
         Component to = resolveUid(toUid);
+        Point[] points = invokeAndWaitQuietly(() -> new Point[] {
+            pointIn(from, params, "fromX", "fromY"), pointIn(to, params, "toX", "toY")});
+        String done = "Dragged from " + fromUid + " (" + points[0].x + "," + points[0].y + ") to "
+            + toUid + " (" + points[1].x + "," + points[1].y + ")";
+        if (robot) {
+            robotDrag(from, points[0], to, points[1]);
+            return done;
+        }
+        invokeAndWaitQuietly(() -> {
+            dispatchDrag(from, points[0], to, points[1]);
+            return null;
+        });
+        return done;
+    }
+
+    private void dispatchDrag(Component from, Point fromP, Component to, Point toP) {
+        Component source = deepestAt(from, fromP);
+        Point start = SwingUtilities.convertPoint(from, fromP, source);
+        // AWT keeps sending drag and release events to the pressed component,
+        // in its own coordinates, wherever the mouse goes.
+        Point end = SwingUtilities.convertPoint(to, toP, source);
+        long now = System.currentTimeMillis();
+        int down = InputEvent.BUTTON1_DOWN_MASK;
+        source.dispatchEvent(new MouseEvent(source, MouseEvent.MOUSE_MOVED, now, 0,
+            start.x, start.y, 0, false, MouseEvent.NOBUTTON));
+        source.dispatchEvent(new MouseEvent(source, MouseEvent.MOUSE_PRESSED, now, down,
+            start.x, start.y, 1, false, MouseEvent.BUTTON1));
+        for (int i = 1; i <= DRAG_STEPS; i++) {
+            int x = start.x + (end.x - start.x) * i / DRAG_STEPS;
+            int y = start.y + (end.y - start.y) * i / DRAG_STEPS;
+            source.dispatchEvent(new MouseEvent(source, MouseEvent.MOUSE_DRAGGED, now, down,
+                x, y, 1, false, MouseEvent.NOBUTTON));
+        }
+        source.dispatchEvent(new MouseEvent(source, MouseEvent.MOUSE_RELEASED, now, 0,
+            end.x, end.y, 1, false, MouseEvent.BUTTON1));
+    }
+
+    private void robotDrag(Component from, Point fromP, Component to, Point toP) throws Exception {
+        Point[] screen = invokeAndWaitQuietly(() -> {
+            requireShowing(from);
+            requireShowing(to);
+            Point a = from.getLocationOnScreen();
+            Point b = to.getLocationOnScreen();
+            return new Point[] {new Point(a.x + fromP.x, a.y + fromP.y), new Point(b.x + toP.x, b.y + toP.y)};
+        });
         Robot robot = new Robot();
-        Point fromLoc = from.getLocationOnScreen();
-        Point toLoc = to.getLocationOnScreen();
-        robot.mouseMove(fromLoc.x + from.getWidth() / 2, fromLoc.y + from.getHeight() / 2);
+        robot.setAutoDelay(15);
+        robot.mouseMove(screen[0].x, screen[0].y);
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-        robot.mouseMove(toLoc.x + to.getWidth() / 2, toLoc.y + to.getHeight() / 2);
-        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-        return "Dragged from " + fromUid + " to " + toUid;
+        try {
+            // Several moves: drag-and-drop only starts after the gesture threshold is passed.
+            for (int i = 1; i <= DRAG_STEPS; i++) {
+                robot.mouseMove(screen[0].x + (screen[1].x - screen[0].x) * i / DRAG_STEPS,
+                    screen[0].y + (screen[1].y - screen[0].y) * i / DRAG_STEPS);
+            }
+        } finally {
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+        }
     }
 
     /**
@@ -971,18 +1170,44 @@ public class ComponentScanner {
     }
 
     /**
-     * Moves the mouse over a component to trigger hover effects and tooltips.
+     * Moves the mouse over a component, at {@code x}/{@code y} (default its
+     * center), to trigger hover effects and tooltips. Called off the EDT.
+     * Delivered as mouse-entered/moved events to the component under the point
+     * unless {@code robot=true}, which moves the real mouse.
      */
-    public String hover(Map<String, Object> params) throws AWTException {
+    public String hover(Map<String, Object> params) throws Exception {
         String uid = getString(params, "uid");
         Component comp = resolveUid(uid);
-        if (GraphicsEnvironment.isHeadless()) {
-            throw new IllegalStateException("Cannot hover in headless environment");
+        boolean robot = getBoolean(params, "robot", false);
+        Point p = invokeAndWaitQuietly(() -> pointIn(comp, params, "x", "y"));
+        if (robot) {
+            Point screen = invokeAndWaitQuietly(() -> {
+                requireShowing(comp);
+                Point loc = comp.getLocationOnScreen();
+                return new Point(loc.x + p.x, loc.y + p.y);
+            });
+            new Robot().mouseMove(screen.x, screen.y);
+        } else {
+            invokeAndWaitQuietly(() -> {
+                Component target = deepestAt(comp, p);
+                Point tp = SwingUtilities.convertPoint(comp, p, target);
+                long now = System.currentTimeMillis();
+                Component previous = lastHovered.get();
+                if (previous != null && previous != target && previous.isDisplayable()) {
+                    // As the real mouse would: leave the last component first, ending its
+                    // rollover state and tooltip.
+                    previous.dispatchEvent(new MouseEvent(previous, MouseEvent.MOUSE_EXITED, now, 0,
+                        -1, -1, 0, false, MouseEvent.NOBUTTON));
+                }
+                lastHovered = new java.lang.ref.WeakReference<>(target);
+                target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_ENTERED, now, 0,
+                    tp.x, tp.y, 0, false, MouseEvent.NOBUTTON));
+                target.dispatchEvent(new MouseEvent(target, MouseEvent.MOUSE_MOVED, now, 0,
+                    tp.x, tp.y, 0, false, MouseEvent.NOBUTTON));
+                return null;
+            });
         }
-        Robot robot = new Robot();
-        Point loc = comp.getLocationOnScreen();
-        robot.mouseMove(loc.x + comp.getWidth() / 2, loc.y + comp.getHeight() / 2);
-        return "Hovering over: " + uid;
+        return "Hovering over: " + uid + " at (" + p.x + "," + p.y + ")";
     }
 
     /**

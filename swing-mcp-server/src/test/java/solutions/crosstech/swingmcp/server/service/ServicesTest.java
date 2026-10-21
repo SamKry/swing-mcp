@@ -137,6 +137,19 @@ class ServicesTest {
     }
 
     @Test
+    void pointerCommandsForwardOffsetsModifiersAndRobot() {
+        InteractionService service = new InteractionService(registry);
+        service.click("comp-1", null, null, 10, 20, "CTRL", true);
+        assertEquals(Map.of("uid", "comp-1", "x", 10, "y", 20, "modifiers", "CTRL", "robot", true),
+            requests.poll().params());
+        service.hover("comp-2", 3, null, null);
+        assertEquals(Map.of("uid", "comp-2", "x", 3), requests.poll().params());
+        service.drag("comp-3", null, 1, 2, 30, 40, null);
+        assertEquals(Map.of("fromUid", "comp-3", "fromX", 1, "fromY", 2, "toX", 30, "toY", 40),
+            requests.poll().params());
+    }
+
+    @Test
     void dialogServiceSendsCommands() {
         DialogService service = new DialogService(registry);
         service.listDialogs();

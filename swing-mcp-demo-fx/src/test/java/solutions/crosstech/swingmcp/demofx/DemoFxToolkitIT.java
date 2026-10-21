@@ -231,6 +231,39 @@ class DemoFxToolkitIT {
     }
 
     @Test
+    @DisplayName("a click lands at x/y inside the node with modifiers held (#19)")
+    void clickAtPointWithModifiers() throws Exception {
+        toolkit.selectOption(Map.of("uid", uidOf("tabs"), "text", "Data"));
+        String uid = uidOf("cityList");
+        List<javafx.scene.input.MouseEvent> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        javafx.event.EventHandler<javafx.scene.input.MouseEvent> recorder = seen::add;
+        javafx.scene.Node list = toolkit.invokeOnUiThread(() -> {
+            javafx.scene.Node n = javafx.stage.Window.getWindows().get(0).getScene().lookup("#cityList");
+            n.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, recorder);
+            return n;
+        }, 5000);
+        try {
+            toolkit.click(Map.of("uid", uid, "x", 12, "y", 9, "modifiers", "CTRL+SHIFT"));
+            long deadline = System.currentTimeMillis() + 5000;
+            while (seen.isEmpty() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20);
+            }
+            assertFalse(seen.isEmpty(), "no click reached the list");
+            javafx.scene.input.MouseEvent click = seen.get(0);
+            assertEquals(12, click.getX(), 0.5);
+            assertEquals(9, click.getY(), 0.5);
+            assertTrue(click.isControlDown() && click.isShiftDown(), "modifiers held");
+            assertThrows(IllegalArgumentException.class,
+                () -> toolkit.hover(Map.of("uid", uid, "x", 100_000, "y", 0)));
+        } finally {
+            toolkit.invokeOnUiThread(() -> {
+                list.removeEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, recorder);
+                return null;
+            }, 5000);
+        }
+    }
+
+    @Test
     @DisplayName("list items are readable and selectable")
     void readAndSelectList() throws Exception {
         String uid = uidOf("cityList");

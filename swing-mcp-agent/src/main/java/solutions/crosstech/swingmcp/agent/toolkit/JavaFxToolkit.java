@@ -509,9 +509,21 @@ public class JavaFxToolkit extends AbstractUiToolkit {
 
     // ---- interaction ------------------------------------------------------
 
+    /**
+     * Wire contract (InteractionService.click): {@code uid}, optional {@code button}
+     * (LEFT/RIGHT/MIDDLE), {@code clickType} (SINGLE/DOUBLE), {@code x}/{@code y}
+     * relative to the node's top-left corner and {@code modifiers} such as
+     * "CTRL+SHIFT". A plain left click on a button is {@code fire()}; anything
+     * else is dispatched as mouse events to the node. {@code robot} does not
+     * apply: events are always delivered to the node.
+     */
     @Override
     public Object click(Map<String, Object> p) throws Exception {
         String uid = required(p, "uid");
+        String buttonName = str(p, "button") == null ? "LEFT" : str(p, "button").toUpperCase();
+        int clicks = "DOUBLE".equalsIgnoreCase(str(p, "clickType")) ? 2 : 1;
+        Modifiers mods = Modifiers.parse(str(p, "modifiers"));
+        boolean atPoint = p.get("x") != null || p.get("y") != null;
         return action(() -> {
             if (scene.isMenuUid(uid)) {
                 scene.menuItem(uid).fire();
@@ -521,24 +533,87 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             if (n.isDisabled()) {
                 throw new IllegalStateException("Component " + uid + " is disabled");
             }
-            if (n instanceof ButtonBase b) {
+            if (n instanceof ButtonBase b && "LEFT".equals(buttonName) && mods.none() && !atPoint) {
                 b.fire();
                 return "Clicked " + uid;
             }
-            dispatchClick(n);
-            return "Dispatched click to " + uid;
+            javafx.geometry.Point2D at = pointIn(n, p);
+            dispatchClick(n, at, mouseButton(buttonName), clicks, mods);
+            return "Dispatched click to " + uid + " at (" + (int) at.getX() + "," + (int) at.getY() + ")";
         });
     }
 
-    /** Synthesises a press/release/click sequence on a node that has no fire(). */
-    private void dispatchClick(Node n) {
+    /** Modifier keys held during a pointer action. */
+    private record Modifiers(boolean shift, boolean ctrl, boolean alt, boolean meta) {
+        static Modifiers parse(String text) {
+            boolean shift = false, ctrl = false, alt = false, meta = false;
+            boolean mac = System.getProperty("os.name", "").toLowerCase().contains("mac");
+            for (String part : (text == null ? "" : text).toUpperCase().split("[+,\\s]+")) {
+                switch (part) {
+                    case "" -> { }
+                    case "CTRL", "CONTROL" -> ctrl = true;
+                    case "SHIFT" -> shift = true;
+                    case "ALT", "OPTION" -> alt = true;
+                    case "META", "CMD", "COMMAND" -> meta = true;
+                    case "SHORTCUT" -> {
+                        meta |= mac;
+                        ctrl |= !mac;
+                    }
+                    default -> throw new IllegalArgumentException("Unknown modifier: " + part
+                        + ". Use CTRL, SHIFT, ALT, META (Cmd), or SHORTCUT, combined with '+'");
+                }
+            }
+            return new Modifiers(shift, ctrl, alt, meta);
+        }
+
+        boolean none() {
+            return !shift && !ctrl && !alt && !meta;
+        }
+    }
+
+    private static MouseButton mouseButton(String name) {
+        return switch (name) {
+            case "RIGHT" -> MouseButton.SECONDARY;
+            case "MIDDLE" -> MouseButton.MIDDLE;
+            default -> MouseButton.PRIMARY;
+        };
+    }
+
+    /** The node-local point a pointer command targets: x/y, or the center for any missing. */
+    private static javafx.geometry.Point2D pointIn(Node n, Map<String, Object> p) {
         Bounds b = n.getBoundsInLocal();
-        double x = b.getWidth() / 2;
-        double y = b.getHeight() / 2;
-        for (javafx.event.EventType<MouseEvent> type :
-            List.of(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED)) {
-            Event.fireEvent(n, new MouseEvent(type, x, y, x, y, MouseButton.PRIMARY, 1,
-                false, false, false, false, true, false, false, true, false, true, null));
+        double x = p.get("x") instanceof Number nx ? b.getMinX() + nx.doubleValue() : b.getCenterX();
+        double y = p.get("y") instanceof Number ny ? b.getMinY() + ny.doubleValue() : b.getCenterY();
+        if (!b.contains(x, y)) {
+            throw new IllegalArgumentException("Point (" + (int) (x - b.getMinX()) + "," + (int) (y - b.getMinY())
+                + ") is outside the component, which is " + (int) b.getWidth() + "x" + (int) b.getHeight()
+                + "; x/y are relative to its top-left corner");
+        }
+        return new javafx.geometry.Point2D(x - b.getMinX(), y - b.getMinY());
+    }
+
+    /**
+     * Synthesises a press/release/click sequence on a node. The event carries
+     * scene coordinates: JavaFX derives each handler's local x/y from them.
+     */
+    private void dispatchClick(Node n, javafx.geometry.Point2D at, MouseButton button, int clicks, Modifiers mods) {
+        Bounds b = n.getBoundsInLocal();
+        javafx.geometry.Point2D scenePt = n.localToScene(b.getMinX() + at.getX(), b.getMinY() + at.getY());
+        javafx.geometry.Point2D screenPt = n.localToScreen(b.getMinX() + at.getX(), b.getMinY() + at.getY());
+        double sx = screenPt == null ? scenePt.getX() : screenPt.getX();
+        double sy = screenPt == null ? scenePt.getY() : screenPt.getY();
+        boolean primary = button == MouseButton.PRIMARY;
+        boolean middle = button == MouseButton.MIDDLE;
+        boolean secondary = button == MouseButton.SECONDARY;
+        for (int count = 1; count <= clicks; count++) {
+            for (javafx.event.EventType<MouseEvent> type :
+                List.of(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED)) {
+                boolean down = type == MouseEvent.MOUSE_PRESSED;
+                Event.fireEvent(n, new MouseEvent(type, scenePt.getX(), scenePt.getY(), sx, sy, button, count,
+                    mods.shift(), mods.ctrl(), mods.alt(), mods.meta(),
+                    primary && down, middle && down, secondary && down,
+                    true, secondary && type != MouseEvent.MOUSE_CLICKED, true, null));
+            }
         }
     }
 
@@ -638,15 +713,19 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         });
     }
 
+    /** Wire contract (InteractionService.hover): {@code uid}, optional {@code x}/{@code y}. */
     @Override
     public String hover(Map<String, Object> p) throws Exception {
         return onUi(() -> {
             Node n = nodeParam(p);
+            javafx.geometry.Point2D at = pointIn(n, p);
             Bounds b = n.getBoundsInLocal();
-            Event.fireEvent(n, new MouseEvent(MouseEvent.MOUSE_ENTERED,
-                b.getWidth() / 2, b.getHeight() / 2, 0, 0, MouseButton.NONE, 0,
-                false, false, false, false, false, false, false, false, false, false, null));
-            return "Hovered " + str(p, "uid");
+            javafx.geometry.Point2D scenePt = n.localToScene(b.getMinX() + at.getX(), b.getMinY() + at.getY());
+            for (javafx.event.EventType<MouseEvent> type : List.of(MouseEvent.MOUSE_ENTERED, MouseEvent.MOUSE_MOVED)) {
+                Event.fireEvent(n, new MouseEvent(type, scenePt.getX(), scenePt.getY(), 0, 0, MouseButton.NONE, 0,
+                    false, false, false, false, false, false, false, true, false, false, null));
+            }
+            return "Hovered " + str(p, "uid") + " at (" + (int) at.getX() + "," + (int) at.getY() + ")";
         });
     }
 

@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a pending result instead of blocking
   ([#23](https://github.com/crosstech-solutions-bv/swing-mcp/issues/23)).
 - `type_text` with `uid` no longer brings the window to the front.
+- Swing `click` (other than a plain left click on a button), `hover` and `drag` are delivered
+  as mouse events to the component under the point instead of moving the real mouse. They
+  work while the window is covered or in the background, do not move the user's cursor, and
+  work headless. A click at a point on a container reaches the child under it, a right click
+  is flagged as the popup trigger, and hovering another component sends mouse-exited to the
+  previous one. A right click on a button is now a right click rather than `doClick()`.
+  Native drag-and-drop between components still needs `robot: true`
+  ([#19](https://github.com/crosstech-solutions-bv/swing-mcp/issues/19)).
+- `drag` is routed by `fromUid`, so in an application with both toolkits it reaches the
+  toolkit that owns the source component.
 
 ### Fixed
 - `take_screenshot` on a JavaFX window saved a broken file: the JavaFX toolkit returned the
@@ -57,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   would ([#22](https://github.com/crosstech-solutions-bv/swing-mcp/issues/22)).
 - `press_key` silently pressed the first letter of a key name it did not know (`HOME` pressed
   `H`, `F5` pressed `F`); unknown names are now rejected with the accepted forms.
+- JavaFX `click` on a node without `fire()` ignored `button` and `clickType` and passed the
+  node-local center as scene coordinates, so handlers saw the wrong position for any node
+  not at the scene origin. Clicks and hovers now carry the right coordinates, button, click
+  count and modifiers.
 
 ### Added
 - `get_app_output` tool: read the captured stdout/stderr of an application started with
@@ -86,6 +100,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `press_key` accepts any `KeyEvent.VK_*` name (`F5`, `HOME`, `END`, `PAGE_UP`, `INSERT`, …),
   `SHORTCUT` (Ctrl, or Cmd on macOS), and `CMD`/`OPTION` aliases. JavaFX `press_key` and
   `type_text` accept `uid` too.
+- `click` and `hover` take `x`/`y` (offset from the component's top-left corner, default
+  its center), and `click` takes `modifiers` (`CTRL`, `SHIFT`, `ALT`, `META`, `SHORTCUT`,
+  combined with `+`). Content drawn inside one component (chart points, canvas items,
+  handles) can now be reached, and Ctrl/Shift-clicks are possible. `drag` takes
+  `fromX`/`fromY`/`toX`/`toY`, and `toUid` is optional, for drags inside one component
+  ([#19](https://github.com/crosstech-solutions-bv/swing-mcp/issues/19)).
+- `robot: true` on `click`, `hover` and `drag` moves the real OS mouse with
+  `java.awt.Robot`, the previous behaviour; `drag` with `robot` now moves in steps so native
+  drag-and-drop passes its gesture threshold.
 
 ## [1.3.0] - 2026-09-14
 

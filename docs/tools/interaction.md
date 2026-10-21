@@ -7,24 +7,41 @@ Swing, the JavaFX Application Thread for JavaFX.
 
 ## `click`
 
-Click a component. `AbstractButton`s (buttons, checkboxes, radio buttons,
-toggle buttons) are clicked directly via `doClick()`; other components via
-mouse emulation.
+Click a component. A plain left click on an `AbstractButton` (button,
+checkbox, radio button, toggle button) or a JavaFX `ButtonBase` is a direct
+`doClick()` / `fire()`. Any other click is delivered as mouse events
+(moved, pressed, released, clicked) to the component under the point, so it
+works while the window is covered or in the background and does not move the
+user's mouse.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
 | `button` | string | no | `LEFT` (default), `RIGHT`, `MIDDLE` |
 | `clickType` | string | no | `SINGLE` (default) or `DOUBLE` |
+| `x` | number | no | Offset from the component's left edge (default: center) |
+| `y` | number | no | Offset from the component's top edge (default: center) |
+| `modifiers` | string | no | Keys held during the click: `CTRL`, `SHIFT`, `ALT`, `META` (Cmd), `SHORTCUT` (Ctrl, or Cmd on macOS), combined with `+`, e.g. `CTRL+SHIFT` |
+| `robot` | boolean | no | Swing: move the real OS mouse with `java.awt.Robot` instead; the window must be in front and uncovered |
+
+**Notes:**
+- Use `x`/`y` for content drawn inside one component: points of a chart,
+  items on a canvas, handles. With `x`/`y` on a container, the click goes to
+  the child under that point, as a real click would.
+- A right click is flagged as the platform's popup trigger.
 
 ## `hover`
 
-Move the mouse over a component to trigger hover effects and tooltips
-(mouse-emulation move without a click).
+Move the mouse over a component to trigger hover effects and tooltips. Like
+`click`, it is delivered as mouse-entered/moved events unless `robot` is set;
+hovering another component first sends mouse-exited to the previous one.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
+| `x` | number | no | Offset from the component's left edge (default: center) |
+| `y` | number | no | Offset from the component's top edge (default: center) |
+| `robot` | boolean | no | Swing: move the real OS mouse instead |
 
 ## `focus`
 
@@ -166,15 +183,25 @@ pending result when the key opened a modal dialog (as for `click`).
 
 ## `drag`
 
-Drag from one component to another using mouse emulation.
+Drag with the left button from a point in one component to a point in
+another, or within one component. The press, the intermediate drag events,
+and the release are delivered to the component under the start point, as AWT
+does for a real drag; this covers sliders, split-pane dividers, chart zoom
+rectangles, and canvas handles.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `fromUid` | string | yes | Source component UID |
-| `toUid` | string | yes | Target component UID |
+| `toUid` | string | no | Target component UID (default: `fromUid`) |
+| `fromX` / `fromY` | number | no | Start point in the source component (default: center) |
+| `toX` / `toY` | number | no | End point in the target component (default: center) |
+| `robot` | boolean | no | Move the real OS mouse in steps; needed for native drag-and-drop (`TransferHandler`) between components. The window must be in front and uncovered |
 
 **Notes:**
 - Swing only; on a JavaFX uid this fails with an error saying so.
+- Native drag-and-drop runs in the operating system's drag loop, which events
+  sent to a component cannot drive. Without `robot`, a drag between two lists
+  or trees is delivered but no data is transferred.
 
 ## `scroll`
 
