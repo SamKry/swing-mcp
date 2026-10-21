@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import solutions.crosstech.swingmcp.common.command.CommandRequest;
 import solutions.crosstech.swingmcp.common.command.CommandResponse;
 import solutions.crosstech.swingmcp.common.enums.CommandType;
 import solutions.crosstech.swingmcp.server.config.SwingMcpProperties;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ServicesTest {
 
     private final ConcurrentLinkedQueue<CommandType> received = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<CommandRequest> requests = new ConcurrentLinkedQueue<>();
     private FakeAgentServer server;
     private SessionRegistry registry;
     private SwingMcpProperties properties;
@@ -43,6 +45,7 @@ class ServicesTest {
     void setUp() throws Exception {
         server = new FakeAgentServer(req -> {
             received.add(req.type());
+            requests.add(req);
             if (req.type() == CommandType.TAKE_SCREENSHOT) {
                 return new CommandResponse(req.requestId(), true, screenshotPayload(), null);
             }
@@ -111,6 +114,15 @@ class ServicesTest {
         assertTrue(received.containsAll(java.util.List.of(
             CommandType.HOVER, CommandType.FOCUS,
             CommandType.TYPE_TEXT, CommandType.SELECT_CONTEXT_MENU_ITEM)));
+    }
+
+    @Test
+    void keyCommandsForwardUidAndRobot() {
+        InteractionService service = new InteractionService(registry);
+        service.pressKey("ENTER", "comp-4", null);
+        assertEquals(Map.of("keys", "ENTER", "uid", "comp-4"), requests.poll().params());
+        service.typeText("abc", null, true);
+        assertEquals(Map.of("text", "abc", "robot", true), requests.poll().params());
     }
 
     @Test

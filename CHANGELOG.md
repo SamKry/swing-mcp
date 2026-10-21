@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+- Swing `press_key` and `type_text` deliver key events straight to the application instead of
+  using `java.awt.Robot`, which sends OS-level keystrokes to whatever application is in front.
+  When the target application was in the background (the normal case when an agent drives it
+  from an editor) keys went to the other application, in the worst case into the user's
+  editor. Keys now go to `uid` (new optional parameter on `press_key`) or to the component
+  with keyboard focus in the application, even while it is inactive, and never to another
+  application. Focus traversal, key bindings, menu accelerators and default buttons behave as
+  for real input, `type_text` can type any character regardless of keyboard layout, and the
+  result names the component that received the keys. A key that opens a modal dialog returns
+  a pending result instead of blocking
+  ([#23](https://github.com/crosstech-solutions-bv/swing-mcp/issues/23)).
+- `type_text` with `uid` no longer brings the window to the front.
+
+### Added
+- `robot: true` on `press_key` and `type_text` keeps OS-level keystrokes for applications that
+  need them; the window is brought to the front first (activating the application on macOS),
+  and the call fails rather than typing into another application if that does not work.
+- `press_key` accepts any `KeyEvent.VK_*` name (`F5`, `HOME`, `END`, `PAGE_UP`, `INSERT`, …),
+  `SHORTCUT` (Ctrl, or Cmd on macOS), and `CMD`/`OPTION` aliases. JavaFX `press_key` and
+  `type_text` accept `uid` too.
+
+### Fixed
+- `press_key` silently pressed the first letter of a key name it did not know (`HOME` pressed
+  `H`, `F5` pressed `F`); unknown names are now rejected with the accepted forms.
 
 ## [1.3.0] - 2026-09-14
 
