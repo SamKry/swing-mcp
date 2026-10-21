@@ -29,6 +29,7 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import solutions.crosstech.swingmcp.agent.ClassNames;
 import solutions.crosstech.swingmcp.common.dto.ComponentDescriptor;
 import solutions.crosstech.swingmcp.common.dto.SnapshotNode;
 
@@ -178,7 +179,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 : List.of(scene.describe(sc.getRoot(), visibleOnly, budget, 0));
             return new SnapshotNode(
                 FxScene.titleOf(win),
-                win.getClass().getSimpleName(),
+                ClassNames.displayName(win.getClass()),
                 (int) win.getX(), (int) win.getY(),
                 (int) win.getWidth(), (int) win.getHeight(),
                 children,
@@ -196,7 +197,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("index", i);
                 m.put("title", FxScene.titleOf(w));
-                m.put("windowClass", w.getClass().getSimpleName());
+                m.put("windowClass", ClassNames.displayName(w.getClass()));
                 m.put("toolkit", id());
                 m.put("focused", w.isFocused());
                 m.put("modal", FxScene.isModal(w));
@@ -218,7 +219,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 MenuItem item = scene.menuItem(uid);
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("uid", uid);
-                m.put("componentClass", item.getClass().getSimpleName());
+                m.put("componentClass", ClassNames.displayName(item.getClass()));
                 m.put("text", item.getText());
                 m.put("enabled", !item.isDisable());
                 return m;
@@ -227,7 +228,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             Bounds b = n.getBoundsInParent();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("uid", uid);
-            m.put("componentClass", n.getClass().getSimpleName());
+            m.put("componentClass", ClassNames.displayName(n.getClass()));
             m.put("id", n.getId());
             m.put("text", FxScene.textOf(n));
             m.put("enabled", !n.isDisabled());
@@ -290,7 +291,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         boolean idHit = byId != null && byId.equalsIgnoreCase(node.getId());
         String t = FxScene.textOf(node);
         boolean textHit = byText != null && t != null && t.toLowerCase().contains(byText.toLowerCase());
-        boolean typeHit = byType != null && node.getClass().getSimpleName().equalsIgnoreCase(byType);
+        boolean typeHit = byType != null && ClassNames.matches(node.getClass(), byType, false);
         boolean match;
         if (anyOf) {
             // by=ANY: a hit on any field, as the Swing scanner does.
@@ -304,7 +305,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             Bounds b = node.getBoundsInParent();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("uid", scene.uidFor(node));
-            m.put("componentClass", node.getClass().getSimpleName());
+            m.put("componentClass", ClassNames.displayName(node.getClass()));
             m.put("id", node.getId());
             m.put("text", FxScene.textOf(node));
             m.put("enabled", !node.isDisabled());
@@ -337,7 +338,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             Node n = nodeParam(p);
             if (!(n instanceof TableView<?> table)) {
                 throw new IllegalArgumentException("Component " + str(p, "uid")
-                    + " is a " + n.getClass().getSimpleName() + ", not a TableView");
+                    + " is a " + ClassNames.displayName(n.getClass()) + ", not a TableView");
             }
             int startRow = Math.max(0, intOr(p, "startRow", 0));
             int endRow = intOr(p, "endRow", -1);
@@ -377,7 +378,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 return m;
             }
             throw new IllegalArgumentException("Component " + str(p, "uid")
-                + " is a " + n.getClass().getSimpleName() + ", not a ListView, ComboBox or ChoiceBox");
+                + " is a " + ClassNames.displayName(n.getClass()) + ", not a ListView, ComboBox or ChoiceBox");
         });
     }
 
@@ -453,6 +454,11 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         return null;
     }
 
+    /**
+     * Wire contract (ScreenshotService.screenshot): the PNG comes back as
+     * {@code imageBase64} with a {@code mimeType}, like the Swing scanner's. A node
+     * snapshot is always rendered, so the {@code mode} parameter does not apply.
+     */
     @Override
     public Map<String, Object> takeScreenshot(Map<String, Object> p) throws Exception {
         return onUi(() -> {
@@ -467,10 +473,11 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ImageIO.write(toBufferedImage(image), "png", out);
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("format", "png");
+            m.put("imageBase64", Base64.getEncoder().encodeToString(out.toByteArray()));
+            m.put("mimeType", "image/png");
             m.put("width", (int) image.getWidth());
             m.put("height", (int) image.getHeight());
-            m.put("base64", Base64.getEncoder().encodeToString(out.toByteArray()));
+            m.put("mode", "PAINT");
             return m;
         });
     }
@@ -635,7 +642,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 return fillSpinner(sp, text);
             }
             throw new IllegalArgumentException("Component " + str(p, "uid") + " is a "
-                + n.getClass().getSimpleName() + " and cannot be filled with text");
+                + ClassNames.displayName(n.getClass()) + " and cannot be filled with text");
         });
     }
 
@@ -669,8 +676,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
     public String typeText(Map<String, Object> p) throws Exception {
         String text = required(p, "text");
         return onUi(() -> {
-            Node n = nodeParam(p);
-            n.requestFocus();
+            Node n = keyTarget(str(p, "uid"), p);
             for (char c : text.toCharArray()) {
                 String s = String.valueOf(c);
                 Event.fireEvent(n, new KeyEvent(KeyEvent.KEY_TYPED, s, s, KeyCode.UNDEFINED,
@@ -678,6 +684,24 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             }
             return "Typed " + text.length() + " character(s)";
         });
+    }
+
+    /**
+     * Where key events go: {@code uid} (focused first) when given, else the focus
+     * owner of the target window's scene, else its root.
+     */
+    private Node keyTarget(String uid, Map<String, Object> p) {
+        if (uid != null && !uid.isBlank()) {
+            Node n = scene.node(uid);
+            n.requestFocus();
+            return n;
+        }
+        Window win = targetWindow(p);
+        Scene sc = win == null ? null : FxScene.sceneOf(win);
+        if (sc == null) {
+            throw new IllegalStateException("No JavaFX window");
+        }
+        return sc.getFocusOwner() != null ? sc.getFocusOwner() : sc.getRoot();
     }
 
     @Override
@@ -742,7 +766,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 return "Toggled to " + tb.isSelected();
             }
             throw new IllegalArgumentException("Component " + str(p, "uid") + " is a "
-                + n.getClass().getSimpleName() + " and has no selectable options");
+                + ClassNames.displayName(n.getClass()) + " and has no selectable options");
         });
     }
 
@@ -806,18 +830,28 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         });
     }
 
+    /**
+     * Wire contract (InteractionService.selectTableCell): {@code row}/{@code col},
+     * optionally {@code toggle} (Ctrl-click) or {@code extend} (Shift-click from the
+     * focused cell), or {@code rows}, a list that becomes the whole selection.
+     */
     @Override
     public String selectTableCell(Map<String, Object> p) throws Exception {
-        int row = intOr(p, "row", -1);
         int col = intOr(p, "col", 0);
+        boolean toggle = Boolean.parseBoolean(str(p, "toggle"));
+        boolean extend = Boolean.parseBoolean(str(p, "extend"));
+        List<?> rows = p.get("rows") instanceof List<?> l ? l : null;
+        if (rows != null && (toggle || extend)) {
+            throw new IllegalArgumentException("rows replaces the whole selection; "
+                + "it cannot be combined with toggle or extend");
+        }
+        if (rows == null && !(p.get("row") instanceof Number)) {
+            throw new IllegalArgumentException("Provide row (optionally with toggle or extend) or rows");
+        }
         return onUi(() -> {
             Node n = nodeParam(p);
             if (!(n instanceof TableView<?> table)) {
                 throw new IllegalArgumentException("Component is not a TableView");
-            }
-            if (row < 0 || row >= table.getItems().size()) {
-                throw new IllegalArgumentException("row " + row + " out of range; "
-                    + table.getItems().size() + " row(s)");
             }
             if (col < 0 || col >= table.getColumns().size()) {
                 throw new IllegalArgumentException("col " + col + " out of range; "
@@ -828,9 +862,44 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             javafx.scene.control.TableColumn column = table.getColumns().get(col);
             @SuppressWarnings({"unchecked", "rawtypes"})
             javafx.scene.control.TableView.TableViewSelectionModel model = table.getSelectionModel();
-            model.clearAndSelect(row, column);
-            return "Selected cell (" + row + ", " + col + ")";
+            if (rows != null) {
+                model.clearSelection();
+                for (Object r : new java.util.LinkedHashSet<>(rows)) {
+                    model.select(requireRow(table, ((Number) r).intValue()), column);
+                }
+            } else {
+                int row = requireRow(table, intOr(p, "row", -1));
+                if (toggle && model.isSelected(row, column)) {
+                    model.clearSelection(row, column);
+                } else if (toggle) {
+                    model.select(row, column);
+                } else if (extend) {
+                    javafx.scene.control.TablePosition<?, ?> anchor = table.getFocusModel().getFocusedCell();
+                    int from = anchor == null || anchor.getRow() < 0 ? row : anchor.getRow();
+                    model.clearSelection();
+                    model.selectRange(Math.min(from, row), column, Math.max(from, row), column);
+                    // Keep the anchor focused so a further extend starts from it, as Shift-click does.
+                    table.getFocusModel().focus(from, column);
+                } else {
+                    model.clearAndSelect(row, column);
+                }
+            }
+            List<Integer> selected = new ArrayList<>(new java.util.TreeSet<Integer>(model.getSelectedIndices()));
+            String result = "Table selection: rows " + selected + ", column " + col;
+            if (model.getSelectionMode() == javafx.scene.control.SelectionMode.SINGLE
+                && (toggle || extend || rows != null && rows.size() > 1)) {
+                result += " (this table allows only one selected row)";
+            }
+            return result;
         });
+    }
+
+    private static int requireRow(TableView<?> table, int row) {
+        if (row < 0 || row >= table.getItems().size()) {
+            throw new IllegalArgumentException("row " + row + " out of range; "
+                + table.getItems().size() + " row(s)");
+        }
+        return row;
     }
 
     @Override
@@ -971,9 +1040,11 @@ public class JavaFxToolkit extends AbstractUiToolkit {
      * {@code "ENTER"}, {@code "TAB"} or {@code "CTRL+A"}, matching the Swing scanner.
      */
     @Override
-    public String pressKey(Map<String, Object> p) throws Exception {
+    public Object pressKey(Map<String, Object> p) throws Exception {
         String keys = str(p, "keys") != null ? str(p, "keys") : required(p, "key");
-        return onUi(() -> {
+        String uid = str(p, "uid");
+        // action, not onUi: a key may open a modal dialog and never return on the FX thread.
+        return action(() -> {
             boolean ctrl = false, shift = false, alt = false, meta = false;
             KeyCode code = null;
             for (String part : keys.toUpperCase().split("\\+")) {
@@ -988,12 +1059,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             if (code == null) {
                 throw new IllegalArgumentException("No key in chord: " + keys);
             }
-            Window win = targetWindow(p);
-            Scene sc = win == null ? null : FxScene.sceneOf(win);
-            if (sc == null) {
-                throw new IllegalStateException("No JavaFX window");
-            }
-            Node target = sc.getFocusOwner() != null ? sc.getFocusOwner() : sc.getRoot();
+            Node target = keyTarget(uid, p);
             Event.fireEvent(target, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code, shift, ctrl, alt, meta));
             Event.fireEvent(target, new KeyEvent(KeyEvent.KEY_RELEASED, "", "", code, shift, ctrl, alt, meta));
             return "Key pressed: " + keys;

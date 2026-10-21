@@ -1,6 +1,7 @@
 package solutions.crosstech.swingmcp.server.tools;
 
 import solutions.crosstech.swingmcp.server.service.InteractionService;
+import java.util.List;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -58,11 +59,13 @@ public class InteractionTools {
         annotations = @McpTool.McpAnnotations(title = "Type text", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
         description = """
         Type text character-by-character into the focused component using key events \
-        (unlike fill, which sets the value directly). Triggers per-keystroke listeners.""")
+        (unlike fill, which sets the value directly). Triggers per-keystroke listeners. \
+        The events go to the application itself, so it works while the app is in the background.""")
     public String typeText(
             @McpToolParam(description = "Text to type") String text,
-            @McpToolParam(description = "Optional component UID to focus before typing", required = false) String uid) {
-        return ToolJson.toJson(interactionService.typeText(text, uid));
+            @McpToolParam(description = "Optional component UID to focus before typing", required = false) String uid,
+            @McpToolParam(description = "Swing: send OS-level keystrokes via Robot; refused unless the window can be brought to the front", required = false) Boolean robot) {
+        return ToolJson.toJson(interactionService.typeText(text, uid, robot));
     }
 
     @McpTool(name = "select_context_menu_item",
@@ -106,12 +109,18 @@ public class InteractionTools {
 
     @McpTool(name = "select_table_cell",
         annotations = @McpTool.McpAnnotations(title = "Select table cell", readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false),
-        description = "Select a JTable cell by zero-based row and column.")
+        description = """
+        Select a JTable/TableView cell by zero-based row and column, like a click. \
+        For multi-selection use toggle (Ctrl/Cmd-click) or extend (Shift-click), \
+        or pass rows to set several selected rows at once.""")
     public String selectTableCell(
-            @McpToolParam(description = "JTable component UID") String uid,
-            @McpToolParam(description = "Zero-based row index") int row,
-            @McpToolParam(description = "Zero-based column index") int col) {
-        return ToolJson.toJson(interactionService.selectTableCell(uid, row, col));
+            @McpToolParam(description = "JTable (Swing) or TableView (JavaFX) component UID") String uid,
+            @McpToolParam(description = "Zero-based row index; omit when passing rows", required = false) Integer row,
+            @McpToolParam(description = "Zero-based column index (default 0)", required = false) Integer col,
+            @McpToolParam(description = "Add or remove this row from the selection (Ctrl/Cmd-click)", required = false) Boolean toggle,
+            @McpToolParam(description = "Select the range from the anchor row to this row (Shift-click)", required = false) Boolean extend,
+            @McpToolParam(description = "Zero-based rows that become the whole selection; [] clears it", required = false) List<Integer> rows) {
+        return ToolJson.toJson(interactionService.selectTableCell(uid, row, col, toggle, extend, rows));
     }
 
     @McpTool(name = "select_menu_item",
@@ -124,10 +133,15 @@ public class InteractionTools {
 
     @McpTool(name = "press_key",
         annotations = @McpTool.McpAnnotations(title = "Press key", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
-        description = "Press a key or key chord in the target application, e.g. \"ENTER\" or \"CTRL+S\".")
+        description = """
+        Press a key or key chord in the target application, e.g. "ENTER", "CTRL+S", "F5". \
+        Sent to the component with keyboard focus in the application (or uid), even while the app \
+        is in the background; the result names the component that received it.""")
     public String pressKey(
-            @McpToolParam(description = "Key or chord such as ENTER, TAB, CTRL+S") String keys) {
-        return ToolJson.toJson(interactionService.pressKey(keys));
+            @McpToolParam(description = "Key or chord such as ENTER, TAB, ESCAPE, F5, HOME, PAGE_DOWN, CTRL+S, SHORTCUT+A") String keys,
+            @McpToolParam(description = "Optional component UID to focus and send the keys to", required = false) String uid,
+            @McpToolParam(description = "Swing: send OS-level keystrokes via Robot; refused unless the window can be brought to the front", required = false) Boolean robot) {
+        return ToolJson.toJson(interactionService.pressKey(keys, uid, robot));
     }
 
     @McpTool(name = "drag",

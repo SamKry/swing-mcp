@@ -19,6 +19,10 @@ Launch a Java desktop application (Swing or JavaFX) with the swing-mcp agent pre
 | `command` | string | yes | Full java command line, e.g. `java -jar /path/to/app.jar` |
 | `workingDir` | string | no | Working directory for the launched process |
 | `sessionId` | string | no | Session id; auto-generated when omitted |
+| `env` | object | no | Environment variables for the launched process, e.g. `{"HDF5_PLUGIN_PATH": "./plugins"}` |
+
+The `-javaagent` argument goes right after the java launcher, so wrappers such as
+`env VAR=value java -jar app.jar` work and JVM options stay in `command`.
 
 Returns session info (session id, mode, PID, agent port). The new session
 becomes the active one.
@@ -53,7 +57,20 @@ Make a session the active one that other tools operate on.
 
 ### `app_status`
 Get the status of the active session: `connected`, `sessionId`,
-`sessionCount`, `alive`, `mode`, `pid`, `agentPort`, `description`.
+`sessionCount`, `alive`, `mode`, `pid`, `agentPort`, `description`, and
+`outputFile` for a launched application.
+
+### `get_app_output`
+Read the captured stdout/stderr of a launched application: the last lines, or
+the lines after `sinceLine` to follow new output. Returns `totalLines`,
+`fromLine`, `toLine`, `text`, and `more` when lines were left out (at most 500
+lines / ~40,000 characters per call).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tail` | number | no | Number of last lines (default 50, max 500) |
+| `sinceLine` | number | no | Return the lines after this line number instead |
+| `sessionId` | string | no | Session id; the active session when omitted |
 
 ## Inspection
 
@@ -82,6 +99,10 @@ Find components by text, name, tooltip, or class without a full snapshot.
 |---|---|---|---|
 | `query` | string | yes | Search string (case-insensitive substring match) |
 | `by` | string | no | `TEXT`, `NAME`, `TOOLTIP`, `CLASS`, or `ANY` (default) |
+
+`CLASS` also matches superclasses (so an anonymous `new JTabbedPane() { ... }` is found by
+`TabbedPane`), an anonymous class's own name (`MainFrame$1`), and, for a query containing a dot,
+the fully qualified name. Snapshots report anonymous classes as e.g. `JTabbedPane (anonymous)`.
 
 ### `get_table_data`
 Extract the model contents of a `JTable` (Swing) or `TableView` (JavaFX):
@@ -176,6 +197,7 @@ Type text character-by-character using key events (unlike `fill`).
 |---|---|---|---|
 | `text` | string | yes | Text to type |
 | `uid` | string | no | Component UID to focus before typing |
+| `robot` | boolean | no | Swing: OS-level keystrokes via `Robot` (window must come to the front) |
 
 ### `fill`
 Set the text/value of a text component, `JSpinner`, `JSlider`, or editable
@@ -186,6 +208,9 @@ Set the text/value of a text component, `JSpinner`, `JSlider`, or editable
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
 | `text` | string | yes | Text or value to enter |
+
+A numeric `JSpinner` gets a value of its model's number class (`Integer`, `Double`, …);
+fractions for integer spinners and out-of-range values are rejected.
 
 ### `select_option`
 Select an option in a `JList`, `JComboBox`, or `JTabbedPane` (Swing) — or a
@@ -206,13 +231,17 @@ Select a `JTree` (Swing) or `TreeView` (JavaFX) node by path.
 | `path` | string | yes | Node path, e.g. `Root > Folder > Leaf` |
 
 ### `select_table_cell`
-Select a `JTable` (Swing) or `TableView` (JavaFX) cell.
+Select a `JTable` (Swing) or `TableView` (JavaFX) cell, like a click, or several rows.
+Returns the resulting selection.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | `JTable` (Swing) or `TableView` (JavaFX) component UID |
-| `row` | number | yes | Zero-based row |
-| `col` | number | yes | Zero-based column |
+| `row` | number | no | Zero-based row; required unless `rows` is given |
+| `col` | number | no | Zero-based column (default 0) |
+| `toggle` | boolean | no | Add/remove the row from the selection (Ctrl/Cmd-click) |
+| `extend` | boolean | no | Select from the anchor row to `row` (Shift-click) |
+| `rows` | number[] | no | Rows that become the whole selection; `[]` clears it |
 
 ### `select_menu_item`
 Click a menu item in the active window's menu bar (`JMenuBar` for Swing,
@@ -232,11 +261,15 @@ Swing, `ContextMenu` for JavaFX).
 | `path` | string | yes | Menu item path, e.g. `Copy` or `Refactor > Rename` |
 
 ### `press_key`
-Press a key or key chord using AWT `Robot`.
+Press a key or key chord. Keys are delivered as key events to `uid` or to the component with keyboard
+focus in the application, so they work while it is in the background and never reach another
+application.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `keys` | string | yes | e.g. `ENTER`, `TAB`, `CTRL+S` |
+| `keys` | string | yes | e.g. `ENTER`, `TAB`, `F5`, `PAGE_DOWN`, `CTRL+S`, `SHORTCUT+A` |
+| `uid` | string | no | Component to focus and send the keys to |
+| `robot` | boolean | no | Swing: OS-level keystrokes via `Robot`; refused unless the window can be brought to the front |
 
 ### `drag`
 Drag from a point in one component to a point in another, or within one component (sliders, dividers,
@@ -297,6 +330,9 @@ under `swing.mcp.screenshot-dir` and the file path is returned.
 |---|---|---|---|
 | `uid` | string | no | Component UID; omit for the whole window |
 | `returnImage` | boolean | no | When `true`, include the base64-encoded PNG data inline |
+| `mode` | string | no | `PAINT` (default): render the UI, unaffected by overlapping windows, no title bar; `SCREEN`: copy the screen pixels |
+
+Queued UI events are processed before capturing, so the image reflects the last action.
 
 ## Utilities
 

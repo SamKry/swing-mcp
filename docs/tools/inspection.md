@@ -16,7 +16,8 @@ gets a stable UID (e.g. `comp-42`) that interaction tools use to address it.
 | `maxDepth` | number | no | Maximum tree depth to descend (default unlimited) |
 
 **Returns:** a tree of components with, per node: UID, component class, name,
-text/label, and key state flags. When the tree was cut short by `maxNodes` or
+text/label, and key state flags. Components of anonymous classes are reported
+by their first named superclass, e.g. `JTabbedPane (anonymous)`. When the tree was cut short by `maxNodes` or
 `maxDepth`, the root carries `"truncated": true` — narrow the request (a
 `filter`, a smaller `maxDepth`, or `find_component`) to see the rest.
 
@@ -55,6 +56,13 @@ expensive or noisy.
 
 **Returns:** the matching components (across all visible windows) with their
 UIDs, class, text, and bounds.
+
+**Notes:**
+- `CLASS` matches the component's class and its superclasses (up to
+  `JComponent` / `Control`), so `JTable` also finds `JTable` subclasses and an
+  anonymous `new JTabbedPane() { ... }` is found by `TabbedPane`. An anonymous
+  class also answers to its name without the package (e.g. `MainFrame$1`), and a
+  query containing a dot is compared against the fully qualified class name.
 
 ## `get_table_data`
 

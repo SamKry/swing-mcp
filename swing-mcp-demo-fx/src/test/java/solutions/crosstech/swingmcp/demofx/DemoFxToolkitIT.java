@@ -202,6 +202,35 @@ class DemoFxToolkitIT {
     }
 
     @Test
+    @DisplayName("table rows can be toggled, extended and set as a whole (#18)")
+    void multiSelectTableRows() throws Exception {
+        toolkit.selectOption(Map.of("uid", uidOf("tabs"), "text", "Data"));
+        String table = uidOf("partsTable");
+        toolkit.selectTableCell(Map.of("uid", table, "row", 0));
+        String toggled = toolkit.selectTableCell(Map.of("uid", table, "row", 2, "toggle", true));
+        assertTrue(toggled.contains("rows [0, 2]"), toggled);
+        String untoggled = toolkit.selectTableCell(Map.of("uid", table, "row", 0, "toggle", true));
+        assertTrue(untoggled.contains("rows [2]"), untoggled);
+        toolkit.selectTableCell(Map.of("uid", table, "row", 0));
+        String extended = toolkit.selectTableCell(Map.of("uid", table, "row", 2, "extend", true));
+        assertTrue(extended.contains("rows [0, 1, 2]"), extended);
+        String rows = toolkit.selectTableCell(Map.of("uid", table, "rows", List.of(1, 2)));
+        assertTrue(rows.contains("rows [1, 2]"), rows);
+    }
+
+    @Test
+    @DisplayName("press_key and type_text accept a target uid (#23)")
+    void keysGoToTheGivenUid() throws Exception {
+        toolkit.selectOption(Map.of("uid", uidOf("tabs"), "text", "Form"));
+        String uid = uidOf("nameField");
+        toolkit.fill(Map.of("uid", uid, "text", ""));
+        toolkit.typeText(Map.of("uid", uid, "text", "Ada"));
+        assertEquals("Ada", toolkit.getComponentDetails(Map.of("uid", uid)).get("text"));
+        Object pressed = toolkit.pressKey(Map.of("uid", uid, "keys", "HOME"));
+        assertTrue(String.valueOf(pressed).contains("HOME"), String.valueOf(pressed));
+    }
+
+    @Test
     @DisplayName("a click lands at x/y inside the node with modifiers held (#19)")
     void clickAtPointWithModifiers() throws Exception {
         toolkit.selectOption(Map.of("uid", uidOf("tabs"), "text", "Data"));
@@ -273,8 +302,8 @@ class DemoFxToolkitIT {
     @DisplayName("a screenshot is produced from the scene graph")
     void screenshot() throws Exception {
         Map<String, Object> shot = toolkit.takeScreenshot(Map.of());
-        assertEquals("png", shot.get("format"));
-        assertNotNull(shot.get("base64"));
+        assertNotNull(shot.get("imageBase64"));
+        assertEquals("image/png", shot.get("mimeType"));
         assertTrue(((Integer) shot.get("width")) > 0);
     }
 

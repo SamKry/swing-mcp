@@ -117,6 +117,26 @@ class ServicesTest {
     }
 
     @Test
+    void selectTableCellForwardsMultiSelectParams() {
+        InteractionService service = new InteractionService(registry);
+        service.selectTableCell("comp-5", 3, null, true, null, null);
+        service.selectTableCell("comp-5", null, 1, null, null, java.util.List.of(0, 2));
+        CommandRequest toggle = requests.poll();
+        assertEquals(Map.of("uid", "comp-5", "row", 3, "toggle", true), toggle.params());
+        CommandRequest rows = requests.poll();
+        assertEquals(Map.of("uid", "comp-5", "col", 1, "rows", java.util.List.of(0, 2)), rows.params());
+    }
+
+    @Test
+    void keyCommandsForwardUidAndRobot() {
+        InteractionService service = new InteractionService(registry);
+        service.pressKey("ENTER", "comp-4", null);
+        assertEquals(Map.of("keys", "ENTER", "uid", "comp-4"), requests.poll().params());
+        service.typeText("abc", null, true);
+        assertEquals(Map.of("text", "abc", "robot", true), requests.poll().params());
+    }
+
+    @Test
     void pointerCommandsForwardOffsetsModifiersAndRobot() {
         InteractionService service = new InteractionService(registry);
         service.click("comp-1", null, null, 10, 20, "CTRL", true);
