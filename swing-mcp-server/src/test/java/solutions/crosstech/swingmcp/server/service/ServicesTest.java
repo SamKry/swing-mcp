@@ -126,6 +126,39 @@ class ServicesTest {
     }
 
     @Test
+    void selectTableCellForwardsMultiSelectParams() {
+        InteractionService service = new InteractionService(registry);
+        service.selectTableCell("comp-5", 3, null, true, null, null);
+        service.selectTableCell("comp-5", null, 1, null, null, java.util.List.of(0, 2));
+        CommandRequest toggle = requests.poll();
+        assertEquals(Map.of("uid", "comp-5", "row", 3, "toggle", true), toggle.params());
+        CommandRequest rows = requests.poll();
+        assertEquals(Map.of("uid", "comp-5", "col", 1, "rows", java.util.List.of(0, 2)), rows.params());
+    }
+
+    @Test
+    void keyCommandsForwardUidAndRobot() {
+        InteractionService service = new InteractionService(registry);
+        service.pressKey("ENTER", "comp-4", null);
+        assertEquals(Map.of("keys", "ENTER", "uid", "comp-4"), requests.poll().params());
+        service.typeText("abc", null, true);
+        assertEquals(Map.of("text", "abc", "robot", true), requests.poll().params());
+    }
+
+    @Test
+    void pointerCommandsForwardOffsetsModifiersAndRobot() {
+        InteractionService service = new InteractionService(registry);
+        service.click("comp-1", null, null, 10, 20, "CTRL", true);
+        assertEquals(Map.of("uid", "comp-1", "x", 10, "y", 20, "modifiers", "CTRL", "robot", true),
+            requests.poll().params());
+        service.hover("comp-2", 3, null, null);
+        assertEquals(Map.of("uid", "comp-2", "x", 3), requests.poll().params());
+        service.drag("comp-3", null, 1, 2, 30, 40, null);
+        assertEquals(Map.of("fromUid", "comp-3", "fromX", 1, "fromY", 2, "toX", 30, "toY", 40),
+            requests.poll().params());
+    }
+
+    @Test
     void dialogServiceSendsCommands() {
         DialogService service = new DialogService(registry);
         service.listDialogs();

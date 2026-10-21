@@ -49,6 +49,7 @@ public class SnapshotTools {
         annotations = @McpTool.McpAnnotations(title = "Find component", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
         description = """
         Find components by text, name, tooltip, or class without taking a full snapshot. \
+        CLASS also matches superclasses, so "JTable" finds JTable subclasses. \
         Returns matching components with their UIDs. Useful for very large component trees.""")
     public String findComponent(
             @McpToolParam(description = "Search string (case-insensitive substring match)") String query,

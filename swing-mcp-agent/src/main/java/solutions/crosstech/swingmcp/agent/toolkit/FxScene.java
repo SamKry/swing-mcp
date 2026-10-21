@@ -36,6 +36,7 @@ import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import solutions.crosstech.swingmcp.agent.ClassNames;
 import solutions.crosstech.swingmcp.common.dto.ComponentDescriptor;
 
 import java.util.ArrayList;
@@ -260,7 +261,7 @@ final class FxScene {
         Bounds b = node.getBoundsInParent();
         return new ComponentDescriptor(
             uidFor(node),
-            node.getClass().getSimpleName(),
+            ClassNames.displayName(node.getClass()),
             node.getId(),
             text,
             tooltip != null && tooltip.equals(text) ? null : tooltip,
@@ -293,7 +294,7 @@ final class FxScene {
                 : List.of();
             out.add(new ComponentDescriptor(
                 uidFor(item),
-                item.getClass().getSimpleName(),
+                ClassNames.displayName(item.getClass()),
                 item.getId(),
                 item.getText(),
                 !item.isDisable(),
@@ -441,7 +442,7 @@ final class FxScene {
         if (w instanceof Stage s) {
             return s.getTitle() == null ? "" : s.getTitle();
         }
-        return w.getClass().getSimpleName();
+        return ClassNames.displayName(w.getClass());
     }
 
     static boolean isModal(Window w) {
