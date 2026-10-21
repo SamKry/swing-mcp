@@ -194,6 +194,9 @@ Set the text/value of a text component, `JSpinner`, `JSlider`, or editable
 | `uid` | string | yes | Component UID |
 | `text` | string | yes | Text or value to enter |
 
+A numeric `JSpinner` gets a value of its model's number class (`Integer`, `Double`, …);
+fractions for integer spinners and out-of-range values are rejected.
+
 ### `select_option`
 Select an option in a `JList`, `JComboBox`, or `JTabbedPane` (Swing) — or a
 `ComboBox`, `ChoiceBox`, `ListView`, or `TabPane` (JavaFX).
