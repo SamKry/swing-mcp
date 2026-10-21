@@ -361,19 +361,56 @@ public class ComponentScanner {
     }
 
     /**
-     * Selects a table cell by row and column.
+     * Selects a table cell by row and column, like a mouse click on it.
+     * Params: uid, row, col (default 0), toggle (Ctrl/Cmd-click), extend
+     * (Shift-click), or rows (a list of rows that becomes the whole selection).
      */
     public String selectTableCell(Map<String, Object> params) {
         String uid = getString(params, "uid");
         Component comp = resolveUid(uid);
-        int row = getInt(params, "row", 0);
         int col = getInt(params, "col", 0);
+        boolean toggle = getBoolean(params, "toggle", false);
+        boolean extend = getBoolean(params, "extend", false);
 
         if (!(comp instanceof JTable table)) {
             throw new IllegalArgumentException("Component " + uid + " is not a JTable");
         }
-        table.changeSelection(row, col, false, false);
-        return "Table cell selected: [" + row + "," + col + "]";
+        requireIndex("col", col, table.getColumnCount());
+        if (params.get("rows") instanceof List<?> rows) {
+            if (toggle || extend) {
+                throw new IllegalArgumentException("rows replaces the whole selection; "
+                    + "it cannot be combined with toggle or extend");
+            }
+            table.clearSelection();
+            boolean first = true;
+            for (Object r : new java.util.LinkedHashSet<>(rows)) {
+                int row = r instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(r));
+                requireIndex("row", row, table.getRowCount());
+                table.changeSelection(row, col, !first, false);
+                first = false;
+            }
+        } else {
+            if (params.get("row") == null) {
+                throw new IllegalArgumentException("Provide row (optionally with toggle or extend) or rows");
+            }
+            int row = getInt(params, "row", 0);
+            requireIndex("row", row, table.getRowCount());
+            table.changeSelection(row, col, toggle, extend);
+        }
+        String selection = "Table selection: rows " + java.util.Arrays.toString(table.getSelectedRows())
+            + ", column " + table.getSelectedColumn();
+        if (table.getSelectionModel().getSelectionMode() == javax.swing.ListSelectionModel.SINGLE_SELECTION
+            && (toggle || extend || params.get("rows") instanceof List<?> l && l.size() > 1)) {
+            selection += " (this table allows only one selected row)";
+        }
+        return selection;
+    }
+
+    private static void requireIndex(String what, int index, int count) {
+        if (index < 0 || index >= count) {
+            throw new IllegalArgumentException(what + " " + index + " is out of range; the table has "
+                + count + (what.equals("row") ? " row(s)" : " column(s)"));
+        }
     }
 
     /**
@@ -1604,6 +1641,17 @@ public class ComponentScanner {
             return n.intValue();
         }
         return Integer.parseInt(val.toString());
+    }
+
+    private boolean getBoolean(Map<String, Object> params, String key, boolean defaultVal) {
+        Object val = params.get(key);
+        if (val == null) {
+            return defaultVal;
+        }
+        if (val instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(val.toString());
     }
 
     private long getLong(Map<String, Object> params, String key, long defaultVal) {

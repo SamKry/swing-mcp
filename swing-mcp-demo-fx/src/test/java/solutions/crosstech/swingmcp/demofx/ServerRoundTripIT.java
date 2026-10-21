@@ -244,6 +244,12 @@ class ServerRoundTripIT {
         String data = tool("get_table_data", JSON.createObjectNode().put("uid", table).put("startRow", 1).put("endRow", 3));
         assertTrue(data.contains("Gasket"), data);
         assertFalse(data.contains("Bearing"), "row 0 should be excluded by startRow=1: " + data);
+
+        // select_table_cell takes a rows array (#18); the schema must carry it through.
+        ObjectNode select = JSON.createObjectNode().put("uid", table);
+        select.putArray("rows").add(0).add(2);
+        String selected = tool("select_table_cell", select);
+        assertTrue(selected.contains("rows [0, 2]"), selected);
     }
 
     @Test

@@ -224,13 +224,17 @@ Select a `JTree` (Swing) or `TreeView` (JavaFX) node by path.
 | `path` | string | yes | Node path, e.g. `Root > Folder > Leaf` |
 
 ### `select_table_cell`
-Select a `JTable` (Swing) or `TableView` (JavaFX) cell.
+Select a `JTable` (Swing) or `TableView` (JavaFX) cell, like a click, or several rows.
+Returns the resulting selection.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | `JTable` (Swing) or `TableView` (JavaFX) component UID |
-| `row` | number | yes | Zero-based row |
-| `col` | number | yes | Zero-based column |
+| `row` | number | no | Zero-based row; required unless `rows` is given |
+| `col` | number | no | Zero-based column (default 0) |
+| `toggle` | boolean | no | Add/remove the row from the selection (Ctrl/Cmd-click) |
+| `extend` | boolean | no | Select from the anchor row to `row` (Shift-click) |
+| `rows` | number[] | no | Rows that become the whole selection; `[]` clears it |
 
 ### `select_menu_item`
 Click a menu item in the active window's menu bar (`JMenuBar` for Swing,
