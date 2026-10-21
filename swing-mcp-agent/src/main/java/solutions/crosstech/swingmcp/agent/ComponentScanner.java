@@ -93,7 +93,7 @@ public class ComponentScanner {
         Rectangle bounds = win.getBounds();
         return new SnapshotNode(
             getWindowTitle(win),
-            win.getClass().getSimpleName(),
+            ClassNames.displayName(win.getClass()),
             bounds.x, bounds.y, bounds.width, bounds.height,
             children,
             budget.truncated ? Boolean.TRUE : null
@@ -134,7 +134,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index++);
                 info.put("title", getWindowTitle(w));
-                info.put("class", w.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(w.getClass()));
                 Rectangle b = w.getBounds();
                 info.put("x", b.x);
                 info.put("y", b.y);
@@ -274,7 +274,7 @@ public class ComponentScanner {
         } else if (comp instanceof JComboBox<?> combo && combo.isEditable()) {
             combo.setSelectedItem(text);
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + ClassNames.displayName(comp.getClass()));
         }
         return "Filled: " + uid;
     }
@@ -333,7 +333,7 @@ public class ComponentScanner {
                 tabs.setSelectedIndex(match);
             }
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + ClassNames.displayName(comp.getClass()));
         }
         return "Option selected on: " + uid;
     }
@@ -584,7 +584,7 @@ public class ComponentScanner {
             }
         }
         if (any || "CLASS".equals(by)) {
-            if (comp.getClass().getSimpleName().toLowerCase().contains(query)) {
+            if (ClassNames.matches(comp.getClass(), query, true)) {
                 return true;
             }
         }
@@ -877,7 +877,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index);
                 info.put("title", dialog.getTitle());
-                info.put("class", dialog.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(dialog.getClass()));
                 info.put("modal", dialog.isModal());
                 JOptionPane pane = findDescendant(dialog, JOptionPane.class);
                 JFileChooser chooser = findDescendant(dialog, JFileChooser.class);
@@ -1020,7 +1020,7 @@ public class ComponentScanner {
             throw new IllegalStateException("No active window");
         }
         if (!(win instanceof Frame frame)) {
-            throw new IllegalArgumentException("Active window is not a Frame: " + win.getClass().getSimpleName());
+            throw new IllegalArgumentException("Active window is not a Frame: " + ClassNames.displayName(win.getClass()));
         }
         WindowState state = WindowState.valueOf(getString(params, "state").toUpperCase());
         int extended = switch (state) {
@@ -1106,7 +1106,7 @@ public class ComponentScanner {
         Rectangle bounds = comp.getBounds();
         ComponentDescriptor desc = new ComponentDescriptor(
             uid,
-            comp.getClass().getSimpleName(),
+            ClassNames.displayName(comp.getClass()),
             comp.getName(),
             text,
             comp.isEnabled(),
@@ -1194,7 +1194,7 @@ public class ComponentScanner {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("uid", assignUid(comp));
         info.put("class", comp.getClass().getName());
-        info.put("simpleName", comp.getClass().getSimpleName());
+        info.put("simpleName", ClassNames.displayName(comp.getClass()));
         info.put("name", comp.getName());
         info.put("text", extractText(comp));
         info.put("enabled", comp.isEnabled());
@@ -1257,7 +1257,7 @@ public class ComponentScanner {
         if (w instanceof java.awt.Dialog d) {
             return d.getTitle();
         }
-        return w.getClass().getSimpleName();
+        return ClassNames.displayName(w.getClass());
     }
 
     private JScrollPane findScrollPane(Component comp) {

@@ -96,6 +96,10 @@ Find components by text, name, tooltip, or class without a full snapshot.
 | `query` | string | yes | Search string (case-insensitive substring match) |
 | `by` | string | no | `TEXT`, `NAME`, `TOOLTIP`, `CLASS`, or `ANY` (default) |
 
+`CLASS` also matches superclasses (so an anonymous `new JTabbedPane() { ... }` is found by
+`TabbedPane`), an anonymous class's own name (`MainFrame$1`), and, for a query containing a dot,
+the fully qualified name. Snapshots report anonymous classes as e.g. `JTabbedPane (anonymous)`.
+
 ### `get_table_data`
 Extract the model contents of a `JTable` (Swing) or `TableView` (JavaFX):
 column names and row values.

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Components of anonymous classes (`new JTabbedPane() { ... }`) could not be found with
+  `find_component` by `CLASS` and were reported with an empty `componentClass` in
+  snapshots, because both relied on `Class.getSimpleName()`. Class matching now covers the
+  component's superclasses up to the toolkit base class (so `TabbedPane` finds an anonymous
+  `JTabbedPane`, and `JTable` finds `JTable` subclasses), an anonymous class's own name
+  (`MainFrame$1`), and, for queries containing a dot, the fully qualified name. Snapshots,
+  `find_component`, `list_windows` and `list_dialogs` report anonymous classes by their first
+  named superclass, e.g. `JTabbedPane (anonymous)`. Applies to Swing and JavaFX
+  ([#20](https://github.com/crosstech-solutions-bv/swing-mcp/issues/20)).
 - `fill` on a numeric `JSpinner` committed a `Double` regardless of the model, so an
   integer spinner suddenly held a `Double` and application code such as
   `(Integer) spinner.getValue()` threw a `ClassCastException`. The text is now converted
