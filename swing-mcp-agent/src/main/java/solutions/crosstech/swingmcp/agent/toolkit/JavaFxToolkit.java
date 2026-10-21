@@ -29,6 +29,7 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import solutions.crosstech.swingmcp.agent.ClassNames;
 import solutions.crosstech.swingmcp.common.dto.ComponentDescriptor;
 import solutions.crosstech.swingmcp.common.dto.SnapshotNode;
 
@@ -178,7 +179,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 : List.of(scene.describe(sc.getRoot(), visibleOnly, budget, 0));
             return new SnapshotNode(
                 FxScene.titleOf(win),
-                win.getClass().getSimpleName(),
+                ClassNames.displayName(win.getClass()),
                 (int) win.getX(), (int) win.getY(),
                 (int) win.getWidth(), (int) win.getHeight(),
                 children,
@@ -196,7 +197,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("index", i);
                 m.put("title", FxScene.titleOf(w));
-                m.put("windowClass", w.getClass().getSimpleName());
+                m.put("windowClass", ClassNames.displayName(w.getClass()));
                 m.put("toolkit", id());
                 m.put("focused", w.isFocused());
                 m.put("modal", FxScene.isModal(w));
@@ -218,7 +219,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 MenuItem item = scene.menuItem(uid);
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("uid", uid);
-                m.put("componentClass", item.getClass().getSimpleName());
+                m.put("componentClass", ClassNames.displayName(item.getClass()));
                 m.put("text", item.getText());
                 m.put("enabled", !item.isDisable());
                 return m;
@@ -227,7 +228,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             Bounds b = n.getBoundsInParent();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("uid", uid);
-            m.put("componentClass", n.getClass().getSimpleName());
+            m.put("componentClass", ClassNames.displayName(n.getClass()));
             m.put("id", n.getId());
             m.put("text", FxScene.textOf(n));
             m.put("enabled", !n.isDisabled());
@@ -290,7 +291,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         boolean idHit = byId != null && byId.equalsIgnoreCase(node.getId());
         String t = FxScene.textOf(node);
         boolean textHit = byText != null && t != null && t.toLowerCase().contains(byText.toLowerCase());
-        boolean typeHit = byType != null && node.getClass().getSimpleName().equalsIgnoreCase(byType);
+        boolean typeHit = byType != null && ClassNames.matches(node.getClass(), byType, false);
         boolean match;
         if (anyOf) {
             // by=ANY: a hit on any field, as the Swing scanner does.
@@ -304,7 +305,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             Bounds b = node.getBoundsInParent();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("uid", scene.uidFor(node));
-            m.put("componentClass", node.getClass().getSimpleName());
+            m.put("componentClass", ClassNames.displayName(node.getClass()));
             m.put("id", node.getId());
             m.put("text", FxScene.textOf(node));
             m.put("enabled", !node.isDisabled());
@@ -337,7 +338,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             Node n = nodeParam(p);
             if (!(n instanceof TableView<?> table)) {
                 throw new IllegalArgumentException("Component " + str(p, "uid")
-                    + " is a " + n.getClass().getSimpleName() + ", not a TableView");
+                    + " is a " + ClassNames.displayName(n.getClass()) + ", not a TableView");
             }
             int startRow = Math.max(0, intOr(p, "startRow", 0));
             int endRow = intOr(p, "endRow", -1);
@@ -377,7 +378,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 return m;
             }
             throw new IllegalArgumentException("Component " + str(p, "uid")
-                + " is a " + n.getClass().getSimpleName() + ", not a ListView, ComboBox or ChoiceBox");
+                + " is a " + ClassNames.displayName(n.getClass()) + ", not a ListView, ComboBox or ChoiceBox");
         });
     }
 
@@ -560,7 +561,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 return fillSpinner(sp, text);
             }
             throw new IllegalArgumentException("Component " + str(p, "uid") + " is a "
-                + n.getClass().getSimpleName() + " and cannot be filled with text");
+                + ClassNames.displayName(n.getClass()) + " and cannot be filled with text");
         });
     }
 
@@ -663,7 +664,7 @@ public class JavaFxToolkit extends AbstractUiToolkit {
                 return "Toggled to " + tb.isSelected();
             }
             throw new IllegalArgumentException("Component " + str(p, "uid") + " is a "
-                + n.getClass().getSimpleName() + " and has no selectable options");
+                + ClassNames.displayName(n.getClass()) + " and has no selectable options");
         });
     }
 
