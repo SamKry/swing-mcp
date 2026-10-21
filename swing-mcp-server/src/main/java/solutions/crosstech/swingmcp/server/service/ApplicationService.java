@@ -59,6 +59,23 @@ public class ApplicationService {
      * @return session info for the launched application
      */
     public Map<String, Object> launch(String command, String workingDir, String sessionId) {
+        return launch(command, workingDir, sessionId, null);
+    }
+
+    /**
+     * Launches a Swing application with the agent preloaded via {@code -javaagent},
+     * with extra environment variables for the launched process.
+     *
+     * @param command    full java command line (e.g. "java -jar app.jar"); may start with
+     *                   a wrapper such as {@code env VAR=value java ...}
+     * @param workingDir optional working directory
+     * @param sessionId  optional session id; replaces an existing session with the same id
+     * @param env        optional environment variables added to (or overriding) the
+     *                   server's own environment for this process only
+     * @return session info for the launched application
+     */
+    public Map<String, Object> launch(String command, String workingDir, String sessionId,
+                                      Map<String, String> env) {
         Path agentJar = requireAgentJar();
         try {
             // Created with owner-only permissions (0600 on POSIX; user-scoped temp
@@ -72,12 +89,9 @@ public class ApplicationService {
             if (args.isEmpty() || args.getFirst().isBlank()) {
                 throw new IllegalArgumentException("Launch command must not be empty");
             }
-            args.add(1, buildAgentArg(agentJar, portFile));
+            args.add(agentArgIndex(args), buildAgentArg(agentJar, portFile));
 
-            ProcessBuilder pb = new ProcessBuilder(args);
-            if (workingDir != null && !workingDir.isBlank()) {
-                pb.directory(Path.of(workingDir).toFile());
-            }
+            ProcessBuilder pb = processBuilder(args, workingDir, env);
             Path outputLog = Files.createTempFile("swing-mcp-app", ".log");
             outputLog.toFile().deleteOnExit();
             pb.redirectErrorStream(true);
@@ -258,6 +272,41 @@ public class ApplicationService {
             + ",portMax=" + properties.getAgentPortMax()
             + ",evaluateEnabled=" + properties.getEvaluate().isEnabled()
             + ",responseFile=" + portFile.toAbsolutePath();
+    }
+
+    /**
+     * Where the {@code -javaagent} argument goes: right after the java launcher
+     * ({@code java}, {@code javaw}, with or without a path or {@code .exe}), so a
+     * wrapper in front of it — {@code env VAR=value java -jar app.jar} — keeps
+     * working. Falls back to after the first token when there is no such launcher.
+     */
+    static int agentArgIndex(List<String> args) {
+        for (int i = 0; i < args.size(); i++) {
+            // Plain string handling: tokens such as -Dx=<y> are not valid paths everywhere.
+            String token = args.get(i).replace('\\', '/');
+            String name = token.substring(token.lastIndexOf('/') + 1).toLowerCase(java.util.Locale.ROOT);
+            if (name.equals("java") || name.equals("java.exe") || name.equals("javaw") || name.equals("javaw.exe")) {
+                return i + 1;
+            }
+        }
+        return 1;
+    }
+
+    /** Builds the process for the launch command, applying the working directory and extra environment. */
+    static ProcessBuilder processBuilder(List<String> args, String workingDir, Map<String, String> env) {
+        ProcessBuilder pb = new ProcessBuilder(args);
+        if (workingDir != null && !workingDir.isBlank()) {
+            pb.directory(Path.of(workingDir).toFile());
+        }
+        if (env != null) {
+            env.forEach((name, value) -> {
+                if (name == null || name.isBlank()) {
+                    throw new IllegalArgumentException("Environment variable names must not be empty");
+                }
+                pb.environment().put(name, value == null ? "" : value);
+            });
+        }
+        return pb;
     }
 
     /**

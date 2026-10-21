@@ -175,7 +175,10 @@ class ServerRoundTripIT {
     void launch() throws Exception {
         String demoJar = System.getProperty("swingmcp.demofx.jar");
         String cmd = "java --module-path \"" + javafxModulePath() + "\" --add-modules javafx.controls -jar \"" + demoJar + "\"";
-        String r = tool("launch_app", JSON.createObjectNode().put("command", cmd));
+        ObjectNode args = JSON.createObjectNode().put("command", cmd);
+        // env is an object parameter (#25); it must survive the server's schema binding.
+        args.putObject("env").put("SWING_MCP_ROUND_TRIP", "1");
+        String r = tool("launch_app", args);
         assertTrue(r.contains("pid") || r.contains("session"), r);
         // Give the stage a moment to show before the first snapshot.
         Thread.sleep(2500);

@@ -19,6 +19,10 @@ Launch a Java desktop application (Swing or JavaFX) with the swing-mcp agent pre
 | `command` | string | yes | Full java command line, e.g. `java -jar /path/to/app.jar` |
 | `workingDir` | string | no | Working directory for the launched process |
 | `sessionId` | string | no | Session id; auto-generated when omitted |
+| `env` | object | no | Environment variables for the launched process, e.g. `{"HDF5_PLUGIN_PATH": "./plugins"}` |
+
+The `-javaagent` argument goes right after the java launcher, so wrappers such as
+`env VAR=value java -jar app.jar` work and JVM options stay in `command`.
 
 Returns session info (session id, mode, PID, agent port). The new session
 becomes the active one.
