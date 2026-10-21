@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node-local center as scene coordinates, so handlers saw the wrong position for any node
   not at the scene origin. Clicks and hovers now carry the right coordinates, button, click
   count and modifiers.
+- JavaFX snapshots ignored `filter: VISIBLE_ONLY`, because the toolkit compared the filter
+  against `VISIBLE` while the server sends `VISIBLE_ONLY`.
+- In JavaFX snapshots `maxDepth` cut plain containers one level earlier than controls and
+  the Swing scanner; `maxDepth: 1` now returns the root and its direct children everywhere.
 
 ### Added
 - `get_app_output` tool: read the captured stdout/stderr of an application started with
@@ -109,6 +113,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `robot: true` on `click`, `hover` and `drag` moves the real OS mouse with
   `java.awt.Robot`, the previous behaviour; `drag` with `robot` now moves in steps so native
   drag-and-drop passes its gesture threshold.
+- `take_snapshot` takes `uid` (snapshot only the subtree below a component), `maxDepth`
+  and `maxNodes`. The agent already honoured the two limits, but the tool did not expose
+  them, so a large window could only be fetched whole (80,000+ characters even with
+  `VISIBLE_ONLY`). Nodes whose children were cut off by `maxDepth` now report
+  `omittedChildren`, and the root reports `truncated` for depth cuts too, so a client can
+  expand exactly the part it needs
+  ([#21](https://github.com/crosstech-solutions-bv/swing-mcp/issues/21)).
+- Snapshot nodes, `find_component` results and `get_component_details` include the
+  component's `tooltip` (HTML reduced to plain text, omitted when equal to the text);
+  for icon-only buttons it is often the only label.
 
 ## [1.3.0] - 2026-09-14
 

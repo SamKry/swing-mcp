@@ -118,6 +118,7 @@ public class DemoFxApp extends Application {
 
         Button submit = new Button("Submit");
         submit.setId("submitButton");
+        submit.setTooltip(new javafx.scene.control.Tooltip("Submit the form"));
         submit.setOnAction(e -> result.setText(
             "submitted: " + name.getText()
                 + " / " + country.getValue()

@@ -72,18 +72,25 @@ public class ComponentScanner {
     /** Component the last event-based hover entered; EDT only. Weak, so it cannot pin a closed window. */
     private java.lang.ref.WeakReference<Component> lastHovered = new java.lang.ref.WeakReference<>(null);
 
-    /**
-     * Takes a snapshot of the current active window's component tree.
-     *
-     * @param params optional params (may contain "windowIndex")
-     * @return a {@link SnapshotNode} with full component tree
-     */
     /** Default cap on the number of component nodes returned by a single snapshot. */
     private static final int DEFAULT_MAX_NODES = 2000;
 
+    /**
+     * Takes a snapshot of the current active window's component tree.
+     *
+     * @param params optional params: windowIndex, filter, maxNodes, maxDepth, and
+     *               uid to snapshot only the subtree rooted at that component
+     * @return a {@link SnapshotNode} with the component tree
+     */
     public SnapshotNode takeSnapshot(Map<String, Object> params) {
-        Window win = getTargetWindow(params);
-        if (win == null) {
+        String uid = (String) params.get("uid");
+        Component root = uid == null || uid.isBlank() ? null : resolveUid(uid);
+        Window win = root == null ? getTargetWindow(params)
+            : root instanceof Window w ? w : SwingUtilities.getWindowAncestor(root);
+        if (root == null) {
+            root = win;
+        }
+        if (root == null) {
             return new SnapshotNode("No window", "null", 0, 0, 0, 0, List.of());
         }
         ComponentStateFilter filter = ComponentStateFilter.valueOf(
@@ -91,7 +98,12 @@ public class ComponentScanner {
         int maxNodes = params.containsKey("maxNodes") ? getInt(params, "maxNodes", DEFAULT_MAX_NODES) : DEFAULT_MAX_NODES;
         int maxDepth = params.containsKey("maxDepth") ? getInt(params, "maxDepth", Integer.MAX_VALUE) : Integer.MAX_VALUE;
         ScanBudget budget = new ScanBudget(Math.max(1, maxNodes), maxDepth);
-        List<ComponentDescriptor> children = scanComponent(win, filter, budget, 0);
+        List<ComponentDescriptor> children = scanComponent(root, filter, budget, 0);
+        if (win == null) {
+            // A detached component: no window to report, only the subtree.
+            return new SnapshotNode("No window", "null", 0, 0, 0, 0, children,
+                budget.truncated ? Boolean.TRUE : null);
+        }
         Rectangle bounds = win.getBounds();
         return new SnapshotNode(
             getWindowTitle(win),
@@ -1642,13 +1654,20 @@ public class ComponentScanner {
                                                     ScanBudget budget, int depth) {
         List<ComponentDescriptor> result = new ArrayList<>();
         List<ComponentDescriptor> children = new ArrayList<>();
-        if (comp instanceof Container container && depth < budget.maxDepth) {
-            for (Component child : container.getComponents()) {
-                if (budget.remaining <= 0) {
-                    budget.truncated = true;
-                    break;
+        Integer omittedChildren = null;
+        if (comp instanceof Container container) {
+            if (depth < budget.maxDepth) {
+                for (Component child : container.getComponents()) {
+                    if (budget.remaining <= 0) {
+                        budget.truncated = true;
+                        break;
+                    }
+                    children.addAll(scanComponent(child, filter, budget, depth + 1));
                 }
-                children.addAll(scanComponent(child, filter, budget, depth + 1));
+            } else if (container.getComponentCount() > 0) {
+                // Cut by maxDepth: say how much is below so the client can drill in by uid.
+                omittedChildren = container.getComponentCount();
+                budget.truncated = true;
             }
         }
         if (!matchesFilter(comp, filter) && children.isEmpty()) {
@@ -1660,6 +1679,7 @@ public class ComponentScanner {
         }
         String uid = assignUid(comp);
         String text = extractText(comp);
+        String tooltip = extractTooltip(comp);
         String selectionState = extractSelectionState(comp);
         Rectangle bounds = comp.getBounds();
         ComponentDescriptor desc = new ComponentDescriptor(
@@ -1667,12 +1687,14 @@ public class ComponentScanner {
             ClassNames.displayName(comp.getClass()),
             comp.getName(),
             text,
+            tooltip != null && tooltip.equals(text) ? null : tooltip,
             comp.isEnabled(),
             comp.isVisible(),
             comp.isFocusable(),
             bounds.x, bounds.y, bounds.width, bounds.height,
             selectionState,
-            children.isEmpty() ? null : children
+            children.isEmpty() ? null : children,
+            omittedChildren
         );
         result.add(desc);
         return result;
@@ -1732,6 +1754,23 @@ public class ComponentScanner {
         return null;
     }
 
+    /** The component's tooltip as plain text; HTML tooltips are reduced to their text. */
+    private String extractTooltip(Component comp) {
+        if (!(comp instanceof JComponent jc)) {
+            return null;
+        }
+        String tip = jc.getToolTipText();
+        if (tip == null || tip.isBlank()) {
+            return null;
+        }
+        if (tip.regionMatches(true, 0, "<html>", 0, 6)) {
+            tip = tip.replaceAll("(?i)<br\\s*/?>", " ").replaceAll("<[^>]*>", "")
+                .replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+                .replaceAll("\\s+", " ").strip();
+        }
+        return tip.isEmpty() ? null : tip;
+    }
+
     private String extractSelectionState(Component comp) {
         if (comp instanceof JComboBox<?> combo) {
             return String.valueOf(combo.getSelectedIndex());
@@ -1755,6 +1794,10 @@ public class ComponentScanner {
         info.put("simpleName", ClassNames.displayName(comp.getClass()));
         info.put("name", comp.getName());
         info.put("text", extractText(comp));
+        String tooltip = extractTooltip(comp);
+        if (tooltip != null) {
+            info.put("tooltip", tooltip);
+        }
         info.put("enabled", comp.isEnabled());
         info.put("visible", comp.isVisible());
         info.put("focusable", comp.isFocusable());

@@ -83,6 +83,13 @@ gets a stable UID (e.g. `comp-42`) used by the interaction tools.
 |---|---|---|---|
 | `windowIndex` | number | no | Window index from `list_windows` |
 | `filter` | string | no | `ALL` (default), `VISIBLE_ONLY`, `ENABLED_ONLY`, `FOCUSABLE_ONLY` |
+| `uid` | string | no | Snapshot only the subtree rooted at this component |
+| `maxDepth` | number | no | Maximum depth below the root (default unlimited) |
+| `maxNodes` | number | no | Cap on returned nodes (default 2000) |
+
+Nodes report `tooltip` when it differs from their text. When `maxDepth` or `maxNodes` cut the tree,
+the root carries `truncated: true`, and nodes whose children were cut by `maxDepth` carry
+`omittedChildren`; snapshot such a node by `uid` to expand it.
 
 ### `get_component_details`
 Detailed information about a single component: class, text, bounds, enabled /

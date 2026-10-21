@@ -33,6 +33,8 @@ description: Uses Swing MCP for efficient debugging, troubleshooting and automat
 
 - Use `find_component` (by `TEXT`, `NAME`, `TOOLTIP`, `CLASS`, or `ANY`) to locate a component without paying for a full snapshot
 - Use `take_snapshot` with `filter` (`VISIBLE_ONLY`, `ENABLED_ONLY`, `FOCUSABLE_ONLY`) to reduce output size
+- For large windows, snapshot with a small `maxDepth` (e.g. 3) first, then pass the `uid` of a node that reports `omittedChildren` to expand only that subtree
+- Icon-only buttons often have no text; their `tooltip` in the snapshot is usually the best label
 - Use `get_table_data` / `get_list_items` with `startRow`/`endRow` (or `startIndex`/`endIndex`) ranges instead of dumping entire models
 - Use `get_component_details` for the full state of a single component instead of re-snapshotting the whole tree
 - When an action has no visible effect, check `get_app_output` (launched apps) for an exception the UI swallowed; pass the last `toLine` as `sinceLine` to read only what is new

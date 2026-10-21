@@ -80,6 +80,15 @@ class ServicesTest {
     }
 
     @Test
+    void snapshotServiceForwardsScopeParams() {
+        SnapshotService service = new SnapshotService(registry);
+        service.takeSnapshot(null, null, "comp-7", 2, 50);
+        assertEquals(Map.of("uid", "comp-7", "maxDepth", 2, "maxNodes", 50), requests.poll().params());
+        service.takeSnapshot(1, "VISIBLE_ONLY");
+        assertEquals(Map.of("windowIndex", 1, "filter", "VISIBLE_ONLY"), requests.poll().params());
+    }
+
+    @Test
     void windowServiceSendsCommands() {
         WindowService service = new WindowService(registry);
         service.listWindows();
