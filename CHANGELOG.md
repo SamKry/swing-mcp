@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+- `take_screenshot` renders the component into an image on the Event Dispatch Thread by
+  default (`mode: PAINT`) instead of copying its screen region. Windows or notifications
+  covering the application no longer end up in the image, background windows and
+  components that are not on screen can be captured, and it works headless. A window is
+  rendered through its root pane, so the native title bar is not included. The previous
+  behaviour is available as `mode: SCREEN`. Either way, events already queued on the UI
+  thread are processed first, so the image no longer lags one repaint behind the last
+  action ([#24](https://github.com/crosstech-solutions-bv/swing-mcp/issues/24)).
+
+### Fixed
+- `take_screenshot` on a JavaFX window saved a broken file: the JavaFX toolkit returned the
+  image under keys the server did not read (`base64`, `format`), so the server decoded the
+  string `"null"`. It now returns `imageBase64` and `mimeType` like the Swing toolkit, and
+  the server rejects a result without image data instead of writing garbage.
 
 ## [1.3.0] - 2026-09-14
 

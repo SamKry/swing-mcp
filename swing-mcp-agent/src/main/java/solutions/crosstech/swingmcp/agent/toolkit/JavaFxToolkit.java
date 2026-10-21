@@ -453,6 +453,11 @@ public class JavaFxToolkit extends AbstractUiToolkit {
         return null;
     }
 
+    /**
+     * Wire contract (ScreenshotService.screenshot): the PNG comes back as
+     * {@code imageBase64} with a {@code mimeType}, like the Swing scanner's. A node
+     * snapshot is always rendered, so the {@code mode} parameter does not apply.
+     */
     @Override
     public Map<String, Object> takeScreenshot(Map<String, Object> p) throws Exception {
         return onUi(() -> {
@@ -467,10 +472,11 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ImageIO.write(toBufferedImage(image), "png", out);
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("format", "png");
+            m.put("imageBase64", Base64.getEncoder().encodeToString(out.toByteArray()));
+            m.put("mimeType", "image/png");
             m.put("width", (int) image.getWidth());
             m.put("height", (int) image.getHeight());
-            m.put("base64", Base64.getEncoder().encodeToString(out.toByteArray()));
+            m.put("mode", "PAINT");
             return m;
         });
     }

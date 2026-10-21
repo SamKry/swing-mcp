@@ -199,24 +199,43 @@ public class ComponentScanner {
 
     /**
      * Takes a screenshot of the active window or a specific component.
+     *
+     * <p>Called off the EDT. Pending events are processed first, so the image
+     * reflects the last action rather than lagging one repaint behind. Mode
+     * {@code PAINT} (default) renders the component into an image on the EDT:
+     * nothing covering it ends up in the picture and it works for windows in the
+     * background. Mode {@code SCREEN} copies the screen region with {@code Robot},
+     * for when native rendering, window decorations or heavyweight popups matter.</p>
      */
-    public Map<String, Object> takeScreenshot(Map<String, Object> params) throws IOException, AWTException {
-        if (GraphicsEnvironment.isHeadless()) {
-            throw new IllegalStateException("Cannot take screenshot in headless environment");
+    public Map<String, Object> takeScreenshot(Map<String, Object> params) throws Exception {
+        String mode = getString(params, "mode", "PAINT").toUpperCase();
+        if (!mode.equals("PAINT") && !mode.equals("SCREEN")) {
+            throw new IllegalArgumentException("Unknown screenshot mode: " + mode + ". Use PAINT or SCREEN.");
         }
-        Component target;
-        String uid = (String) params.get("uid");
-        if (uid != null && !uid.isBlank()) {
-            target = resolveUid(uid);
-        } else {
-            target = getTargetWindow(params);
+        if (mode.equals("SCREEN") && GraphicsEnvironment.isHeadless()) {
+            throw new IllegalStateException("Cannot capture the screen in a headless environment; use mode PAINT");
         }
-        if (target == null) {
-            throw new IllegalStateException("No target component or window for screenshot");
-        }
-        Robot robot = new Robot();
-        Rectangle bounds = new Rectangle(target.getLocationOnScreen(), target.getSize());
-        BufferedImage img = robot.createScreenCapture(bounds);
+        awaitIdleEventQueue();
+        BufferedImage img = invokeAndWaitQuietly(() -> {
+            Component target;
+            String uid = (String) params.get("uid");
+            if (uid != null && !uid.isBlank()) {
+                target = resolveUid(uid);
+            } else {
+                target = getTargetWindow(params);
+            }
+            if (target == null) {
+                throw new IllegalStateException("No target component or window for screenshot");
+            }
+            if (mode.equals("PAINT")) {
+                return paintToImage(target);
+            }
+            if (!target.isShowing()) {
+                throw new IllegalStateException("Component is not on screen; use mode PAINT to render it anyway");
+            }
+            // Robot.createScreenCapture only reads pixels; it does not wait for the EDT.
+            return new Robot().createScreenCapture(new Rectangle(target.getLocationOnScreen(), target.getSize()));
+        });
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(img, "PNG", baos);
         String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
@@ -225,7 +244,65 @@ public class ComponentScanner {
         result.put("mimeType", "image/png");
         result.put("width", img.getWidth());
         result.put("height", img.getHeight());
+        result.put("mode", mode);
         return result;
+    }
+
+    /**
+     * Renders a component, or a window's content, into an image. Must run on the EDT.
+     * A Swing window is rendered through its root pane (menu bar, content, and
+     * lightweight popups), without the native title bar.
+     */
+    private BufferedImage paintToImage(Component target) {
+        Component painted = target instanceof javax.swing.RootPaneContainer rpc && rpc.getRootPane() != null
+            ? rpc.getRootPane() : target;
+        int width = painted.getWidth();
+        int height = painted.getHeight();
+        if (width <= 0 || height <= 0) {
+            throw new IllegalStateException("Component has no size (" + width + "x" + height
+                + "); it is probably not laid out or not displayed");
+        }
+        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        try {
+            // Non-opaque components show their ancestors' background on screen.
+            g.setColor(backgroundOf(painted));
+            g.fillRect(0, 0, width, height);
+            if (painted.isShowing()) {
+                // paintAll also renders heavyweight children (e.g. an AWT Canvas).
+                painted.paintAll(g);
+            } else {
+                painted.paint(g);
+            }
+        } finally {
+            g.dispose();
+        }
+        return img;
+    }
+
+    private static java.awt.Color backgroundOf(Component comp) {
+        for (Component c = comp; c != null; c = c.getParent()) {
+            if (c.isOpaque() && c.getBackground() != null) {
+                return c.getBackground();
+            }
+        }
+        return comp.getBackground() != null ? comp.getBackground() : java.awt.Color.WHITE;
+    }
+
+    /**
+     * Lets the EDT process what is already queued (listeners, revalidation,
+     * repaints posted by the last action) before an image is taken. Bounded, so a
+     * busy application cannot stall the screenshot.
+     */
+    private void awaitIdleEventQueue() throws Exception {
+        if (SwingUtilities.isEventDispatchThread()) {
+            return;
+        }
+        java.awt.EventQueue queue = Toolkit.getDefaultToolkit().getSystemEventQueue();
+        long deadline = System.currentTimeMillis() + 1000;
+        do {
+            SwingUtilities.invokeAndWait(() -> { });
+        } while (queue.peekEvent() != null && System.currentTimeMillis() < deadline);
     }
 
     /**
