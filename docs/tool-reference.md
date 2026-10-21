@@ -140,14 +140,18 @@ Close the active window by dispatching a window-closing event.
 ## Interaction
 
 ### `click`
-Click a component. `AbstractButton`s are clicked directly (`doClick`); other
-components via mouse emulation.
+Click a component. A plain left click on a button is a direct `doClick`/`fire`; other clicks are
+delivered as mouse events at `x`/`y` to the component under that point, which works while the window
+is covered or in the background.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
 | `button` | string | no | `LEFT` (default), `RIGHT`, `MIDDLE` |
 | `clickType` | string | no | `SINGLE` (default) or `DOUBLE` |
+| `x` / `y` | number | no | Offset from the component's top-left corner (default: center) |
+| `modifiers` | string | no | `CTRL`, `SHIFT`, `ALT`, `META`, `SHORTCUT`, combined with `+` |
+| `robot` | boolean | no | Swing: use the real OS mouse (window must be in front) |
 
 ### `hover`
 Move the mouse over a component to trigger hover effects and tooltips.
@@ -155,6 +159,8 @@ Move the mouse over a component to trigger hover effects and tooltips.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
+| `x` / `y` | number | no | Offset from the component's top-left corner (default: center) |
+| `robot` | boolean | no | Swing: use the real OS mouse |
 
 ### `focus`
 Give keyboard focus to a component.
@@ -233,13 +239,17 @@ Press a key or key chord using AWT `Robot`.
 | `keys` | string | yes | e.g. `ENTER`, `TAB`, `CTRL+S` |
 
 ### `drag`
-Drag from one component to another using mouse emulation. Swing only; on a
-JavaFX uid this fails with an error saying so.
+Drag from a point in one component to a point in another, or within one component (sliders, dividers,
+chart zoom). Delivered as mouse events; native drag-and-drop between components needs `robot: true`.
+Swing only; on a JavaFX uid this fails with an error saying so.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `fromUid` | string | yes | Source component UID |
-| `toUid` | string | yes | Target component UID |
+| `toUid` | string | no | Target component UID (default: `fromUid`) |
+| `fromX` / `fromY` | number | no | Start point in the source (default: center) |
+| `toX` / `toY` | number | no | End point in the target (default: center) |
+| `robot` | boolean | no | Use the real OS mouse, as native drag-and-drop requires |
 
 ### `scroll`
 Scroll a component inside a `JScrollPane` (Swing) or `ScrollPane` (JavaFX).

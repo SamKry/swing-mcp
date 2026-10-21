@@ -21,6 +21,15 @@ public class InteractionService {
 
     /** Clicks a component by UID. */
     public Object click(String uid, String button, String clickType) {
+        return click(uid, button, clickType, null, null, null, null);
+    }
+
+    /**
+     * Clicks a component by UID, optionally at an offset from its top-left
+     * corner, with modifier keys held, or with the real OS mouse.
+     */
+    public Object click(String uid, String button, String clickType, Integer x, Integer y,
+                        String modifiers, Boolean robot) {
         Map<String, Object> params = new HashMap<>();
         params.put("uid", uid);
         if (button != null) {
@@ -29,12 +38,39 @@ public class InteractionService {
         if (clickType != null) {
             params.put("clickType", clickType);
         }
+        putPoint(params, "x", x, "y", y);
+        if (modifiers != null && !modifiers.isBlank()) {
+            params.put("modifiers", modifiers);
+        }
+        if (Boolean.TRUE.equals(robot)) {
+            params.put("robot", true);
+        }
         return registry.require().send(CommandType.CLICK, params);
     }
 
     /** Moves the mouse over a component to trigger hover effects and tooltips. */
     public Object hover(String uid) {
-        return registry.require().send(CommandType.HOVER, Map.of("uid", uid));
+        return hover(uid, null, null, null);
+    }
+
+    /** Moves the mouse over a component, optionally at an offset or with the real OS mouse. */
+    public Object hover(String uid, Integer x, Integer y, Boolean robot) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("uid", uid);
+        putPoint(params, "x", x, "y", y);
+        if (Boolean.TRUE.equals(robot)) {
+            params.put("robot", true);
+        }
+        return registry.require().send(CommandType.HOVER, params);
+    }
+
+    private static void putPoint(Map<String, Object> params, String xKey, Integer x, String yKey, Integer y) {
+        if (x != null) {
+            params.put(xKey, x);
+        }
+        if (y != null) {
+            params.put(yKey, y);
+        }
     }
 
     /** Gives keyboard focus to a component. */
@@ -97,7 +133,26 @@ public class InteractionService {
 
     /** Drags from one component to another. */
     public Object drag(String fromUid, String toUid) {
-        return registry.require().send(CommandType.DRAG, Map.of("fromUid", fromUid, "toUid", toUid));
+        return drag(fromUid, toUid, null, null, null, null, null);
+    }
+
+    /**
+     * Drags from a point in one component to a point in another (or, with no
+     * {@code toUid}, the same) component; offsets default to the centers.
+     */
+    public Object drag(String fromUid, String toUid, Integer fromX, Integer fromY, Integer toX, Integer toY,
+                       Boolean robot) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("fromUid", fromUid);
+        if (toUid != null && !toUid.isBlank()) {
+            params.put("toUid", toUid);
+        }
+        putPoint(params, "fromX", fromX, "fromY", fromY);
+        putPoint(params, "toX", toX, "toY", toY);
+        if (Boolean.TRUE.equals(robot)) {
+            params.put("robot", true);
+        }
+        return registry.require().send(CommandType.DRAG, params);
     }
 
     /** Scrolls a scrollable component. */

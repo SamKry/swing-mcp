@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import solutions.crosstech.swingmcp.common.command.CommandRequest;
 import solutions.crosstech.swingmcp.common.command.CommandResponse;
 import solutions.crosstech.swingmcp.common.enums.CommandType;
 import solutions.crosstech.swingmcp.server.config.SwingMcpProperties;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ServicesTest {
 
     private final ConcurrentLinkedQueue<CommandType> received = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<CommandRequest> requests = new ConcurrentLinkedQueue<>();
     private FakeAgentServer server;
     private SessionRegistry registry;
     private SwingMcpProperties properties;
@@ -43,6 +45,7 @@ class ServicesTest {
     void setUp() throws Exception {
         server = new FakeAgentServer(req -> {
             received.add(req.type());
+            requests.add(req);
             if (req.type() == CommandType.TAKE_SCREENSHOT) {
                 return new CommandResponse(req.requestId(), true, screenshotPayload(), null);
             }
@@ -111,6 +114,19 @@ class ServicesTest {
         assertTrue(received.containsAll(java.util.List.of(
             CommandType.HOVER, CommandType.FOCUS,
             CommandType.TYPE_TEXT, CommandType.SELECT_CONTEXT_MENU_ITEM)));
+    }
+
+    @Test
+    void pointerCommandsForwardOffsetsModifiersAndRobot() {
+        InteractionService service = new InteractionService(registry);
+        service.click("comp-1", null, null, 10, 20, "CTRL", true);
+        assertEquals(Map.of("uid", "comp-1", "x", 10, "y", 20, "modifiers", "CTRL", "robot", true),
+            requests.poll().params());
+        service.hover("comp-2", 3, null, null);
+        assertEquals(Map.of("uid", "comp-2", "x", 3), requests.poll().params());
+        service.drag("comp-3", null, 1, 2, 30, 40, null);
+        assertEquals(Map.of("fromUid", "comp-3", "fromX", 1, "fromY", 2, "toX", 30, "toY", 40),
+            requests.poll().params());
     }
 
     @Test

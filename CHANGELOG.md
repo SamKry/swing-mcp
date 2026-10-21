@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- `click` and `hover` take `x`/`y` (offset from the component's top-left corner, default
+  its center), and `click` takes `modifiers` (`CTRL`, `SHIFT`, `ALT`, `META`, `SHORTCUT`,
+  combined with `+`). Content drawn inside one component (chart points, canvas items,
+  handles) can now be reached, and Ctrl/Shift-clicks are possible. `drag` takes
+  `fromX`/`fromY`/`toX`/`toY`, and `toUid` is optional, for drags inside one component
+  ([#19](https://github.com/crosstech-solutions-bv/swing-mcp/issues/19)).
+- `robot: true` on `click`, `hover` and `drag` moves the real OS mouse with
+  `java.awt.Robot`, the previous behaviour; `drag` with `robot` now moves in steps so native
+  drag-and-drop passes its gesture threshold.
+
+### Changed
+- Swing `click` (other than a plain left click on a button), `hover` and `drag` are delivered
+  as mouse events to the component under the point instead of moving the real mouse. They
+  work while the window is covered or in the background, do not move the user's cursor, and
+  work headless. A click at a point on a container reaches the child under it, a right click
+  is flagged as the popup trigger, and hovering another component sends mouse-exited to the
+  previous one. A right click on a button is now a right click rather than `doClick()`.
+  Native drag-and-drop between components still needs `robot: true`
+  ([#19](https://github.com/crosstech-solutions-bv/swing-mcp/issues/19)).
+- `drag` is routed by `fromUid`, so in an application with both toolkits it reaches the
+  toolkit that owns the source component.
+
+### Fixed
+- JavaFX `click` on a node without `fire()` ignored `button` and `clickType` and passed the
+  node-local center as scene coordinates, so handlers saw the wrong position for any node
+  not at the scene origin. Clicks and hovers now carry the right coordinates, button, click
+  count and modifiers.
 
 ## [1.3.0] - 2026-09-14
 
