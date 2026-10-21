@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Double`, `BigInteger`, `BigDecimal`), and fractions for integer models or values
   outside the model's bounds are rejected with a clear error, as the spinner's own editor
   would ([#22](https://github.com/crosstech-solutions-bv/swing-mcp/issues/22)).
+  
+### Added
+- `get_app_output` tool: read the captured stdout/stderr of an application started with
+  `launch_app`, either the last `tail` lines or the lines after `sinceLine` to follow new
+  output. Stack traces and log lines of a running application, often the only trace of an
+  error the UI swallows, were previously only shown (last lines) when a launch failed, and
+  an agent had to guess the log file's location in the temp directory. Read-only; at most
+  500 lines and about 40,000 characters per call. The tool count is now 40
+  ([#26](https://github.com/crosstech-solutions-bv/swing-mcp/issues/26)).
+- `launch_app`, `app_status` and `list_sessions` report `outputFile` for launched
+  applications.
 
 ## [1.3.0] - 2026-09-14
 
