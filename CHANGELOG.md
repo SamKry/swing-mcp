@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+- `fill` on a numeric `JSpinner` committed a `Double` regardless of the model, so an
+  integer spinner suddenly held a `Double` and application code such as
+  `(Integer) spinner.getValue()` threw a `ClassCastException`. The text is now converted
+  to the class of the model's current value (`Integer`, `Long`, `Short`, `Byte`, `Float`,
+  `Double`, `BigInteger`, `BigDecimal`), and fractions for integer models or values
+  outside the model's bounds are rejected with a clear error, as the spinner's own editor
+  would ([#22](https://github.com/crosstech-solutions-bv/swing-mcp/issues/22)).
 
 ## [1.3.0] - 2026-09-14
 

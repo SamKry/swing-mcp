@@ -1517,11 +1517,69 @@ public class ComponentScanner {
     }
 
     private Object parseSpinnerValue(JSpinner spinner, String text) {
-        javax.swing.SpinnerModel model = spinner.getModel();
-        if (model instanceof javax.swing.SpinnerNumberModel) {
-            return Double.parseDouble(text);
+        return spinnerValue(spinner.getModel(), text);
+    }
+
+    /**
+     * Converts {@code text} to the value a user typing into the spinner would
+     * commit. A {@link javax.swing.SpinnerNumberModel} keeps the number class of
+     * its current value (an integer model stays {@code Integer}), so application
+     * code casting {@code getValue()} keeps working; values outside the model's
+     * bounds are rejected instead of being set silently.
+     */
+    static Object spinnerValue(javax.swing.SpinnerModel model, String text) {
+        if (!(model instanceof javax.swing.SpinnerNumberModel numbers)) {
+            return text;
         }
-        return text;
+        java.math.BigDecimal parsed;
+        try {
+            parsed = new java.math.BigDecimal(text.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Spinner expects a number, got \"" + text + "\"");
+        }
+        Class<?> type = numbers.getNumber() == null ? Double.class : numbers.getNumber().getClass();
+        Number value;
+        try {
+            if (type == Integer.class) {
+                value = parsed.intValueExact();
+            } else if (type == Long.class) {
+                value = parsed.longValueExact();
+            } else if (type == Short.class) {
+                value = parsed.shortValueExact();
+            } else if (type == Byte.class) {
+                value = parsed.byteValueExact();
+            } else if (type == java.math.BigInteger.class) {
+                value = parsed.toBigIntegerExact();
+            } else if (type == java.math.BigDecimal.class) {
+                value = parsed;
+            } else if (type == Float.class) {
+                value = parsed.floatValue();
+            } else {
+                value = parsed.doubleValue();
+            }
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("Spinner holds " + type.getSimpleName()
+                + " values; \"" + text + "\" is not a whole number in that range");
+        }
+        if (outOfBounds(numbers.getMinimum(), value, true) || outOfBounds(numbers.getMaximum(), value, false)) {
+            throw new IllegalArgumentException("Value " + value + " is outside the spinner's range ["
+                + numbers.getMinimum() + ", " + numbers.getMaximum() + "]");
+        }
+        return value;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean outOfBounds(Comparable bound, Number value, boolean lower) {
+        if (bound == null) {
+            return false;
+        }
+        try {
+            int cmp = bound.compareTo(value);
+            return lower ? cmp > 0 : cmp < 0;
+        } catch (ClassCastException e) {
+            // Bound of a different Number class than the value: let the model decide.
+            return false;
+        }
     }
 
     private String getString(Map<String, Object> params, String key) {
