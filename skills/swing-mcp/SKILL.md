@@ -35,6 +35,7 @@ description: Uses Swing MCP for efficient debugging, troubleshooting and automat
 - Use `take_snapshot` with `filter` (`VISIBLE_ONLY`, `ENABLED_ONLY`, `FOCUSABLE_ONLY`) to reduce output size
 - Use `get_table_data` / `get_list_items` with `startRow`/`endRow` (or `startIndex`/`endIndex`) ranges instead of dumping entire models
 - Use `get_component_details` for the full state of a single component instead of re-snapshotting the whole tree
+- When an action has no visible effect, check `get_app_output` (launched apps) for an exception the UI swallowed; pass the last `toLine` as `sinceLine` to read only what is new
 
 ### Tool selection
 

@@ -93,7 +93,7 @@ public class ComponentScanner {
         Rectangle bounds = win.getBounds();
         return new SnapshotNode(
             getWindowTitle(win),
-            win.getClass().getSimpleName(),
+            ClassNames.displayName(win.getClass()),
             bounds.x, bounds.y, bounds.width, bounds.height,
             children,
             budget.truncated ? Boolean.TRUE : null
@@ -134,7 +134,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index++);
                 info.put("title", getWindowTitle(w));
-                info.put("class", w.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(w.getClass()));
                 Rectangle b = w.getBounds();
                 info.put("x", b.x);
                 info.put("y", b.y);
@@ -274,7 +274,7 @@ public class ComponentScanner {
         } else if (comp instanceof JComboBox<?> combo && combo.isEditable()) {
             combo.setSelectedItem(text);
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + ClassNames.displayName(comp.getClass()));
         }
         return "Filled: " + uid;
     }
@@ -333,7 +333,7 @@ public class ComponentScanner {
                 tabs.setSelectedIndex(match);
             }
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + ClassNames.displayName(comp.getClass()));
         }
         return "Option selected on: " + uid;
     }
@@ -584,7 +584,7 @@ public class ComponentScanner {
             }
         }
         if (any || "CLASS".equals(by)) {
-            if (comp.getClass().getSimpleName().toLowerCase().contains(query)) {
+            if (ClassNames.matches(comp.getClass(), query, true)) {
                 return true;
             }
         }
@@ -877,7 +877,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index);
                 info.put("title", dialog.getTitle());
-                info.put("class", dialog.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(dialog.getClass()));
                 info.put("modal", dialog.isModal());
                 JOptionPane pane = findDescendant(dialog, JOptionPane.class);
                 JFileChooser chooser = findDescendant(dialog, JFileChooser.class);
@@ -1020,7 +1020,7 @@ public class ComponentScanner {
             throw new IllegalStateException("No active window");
         }
         if (!(win instanceof Frame frame)) {
-            throw new IllegalArgumentException("Active window is not a Frame: " + win.getClass().getSimpleName());
+            throw new IllegalArgumentException("Active window is not a Frame: " + ClassNames.displayName(win.getClass()));
         }
         WindowState state = WindowState.valueOf(getString(params, "state").toUpperCase());
         int extended = switch (state) {
@@ -1106,7 +1106,7 @@ public class ComponentScanner {
         Rectangle bounds = comp.getBounds();
         ComponentDescriptor desc = new ComponentDescriptor(
             uid,
-            comp.getClass().getSimpleName(),
+            ClassNames.displayName(comp.getClass()),
             comp.getName(),
             text,
             comp.isEnabled(),
@@ -1194,7 +1194,7 @@ public class ComponentScanner {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("uid", assignUid(comp));
         info.put("class", comp.getClass().getName());
-        info.put("simpleName", comp.getClass().getSimpleName());
+        info.put("simpleName", ClassNames.displayName(comp.getClass()));
         info.put("name", comp.getName());
         info.put("text", extractText(comp));
         info.put("enabled", comp.isEnabled());
@@ -1257,7 +1257,7 @@ public class ComponentScanner {
         if (w instanceof java.awt.Dialog d) {
             return d.getTitle();
         }
-        return w.getClass().getSimpleName();
+        return ClassNames.displayName(w.getClass());
     }
 
     private JScrollPane findScrollPane(Component comp) {
@@ -1517,11 +1517,69 @@ public class ComponentScanner {
     }
 
     private Object parseSpinnerValue(JSpinner spinner, String text) {
-        javax.swing.SpinnerModel model = spinner.getModel();
-        if (model instanceof javax.swing.SpinnerNumberModel) {
-            return Double.parseDouble(text);
+        return spinnerValue(spinner.getModel(), text);
+    }
+
+    /**
+     * Converts {@code text} to the value a user typing into the spinner would
+     * commit. A {@link javax.swing.SpinnerNumberModel} keeps the number class of
+     * its current value (an integer model stays {@code Integer}), so application
+     * code casting {@code getValue()} keeps working; values outside the model's
+     * bounds are rejected instead of being set silently.
+     */
+    static Object spinnerValue(javax.swing.SpinnerModel model, String text) {
+        if (!(model instanceof javax.swing.SpinnerNumberModel numbers)) {
+            return text;
         }
-        return text;
+        java.math.BigDecimal parsed;
+        try {
+            parsed = new java.math.BigDecimal(text.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Spinner expects a number, got \"" + text + "\"");
+        }
+        Class<?> type = numbers.getNumber() == null ? Double.class : numbers.getNumber().getClass();
+        Number value;
+        try {
+            if (type == Integer.class) {
+                value = parsed.intValueExact();
+            } else if (type == Long.class) {
+                value = parsed.longValueExact();
+            } else if (type == Short.class) {
+                value = parsed.shortValueExact();
+            } else if (type == Byte.class) {
+                value = parsed.byteValueExact();
+            } else if (type == java.math.BigInteger.class) {
+                value = parsed.toBigIntegerExact();
+            } else if (type == java.math.BigDecimal.class) {
+                value = parsed;
+            } else if (type == Float.class) {
+                value = parsed.floatValue();
+            } else {
+                value = parsed.doubleValue();
+            }
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("Spinner holds " + type.getSimpleName()
+                + " values; \"" + text + "\" is not a whole number in that range");
+        }
+        if (outOfBounds(numbers.getMinimum(), value, true) || outOfBounds(numbers.getMaximum(), value, false)) {
+            throw new IllegalArgumentException("Value " + value + " is outside the spinner's range ["
+                + numbers.getMinimum() + ", " + numbers.getMaximum() + "]");
+        }
+        return value;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean outOfBounds(Comparable bound, Number value, boolean lower) {
+        if (bound == null) {
+            return false;
+        }
+        try {
+            int cmp = bound.compareTo(value);
+            return lower ? cmp > 0 : cmp < 0;
+        } catch (ClassCastException e) {
+            // Bound of a different Number class than the value: let the model decide.
+            return false;
+        }
     }
 
     private String getString(Map<String, Object> params, String key) {

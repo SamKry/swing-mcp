@@ -180,8 +180,13 @@ class ServerRoundTripIT {
         args.putObject("env").put("SWING_MCP_ROUND_TRIP", "1");
         String r = tool("launch_app", args);
         assertTrue(r.contains("pid") || r.contains("session"), r);
+        assertTrue(r.contains("outputFile"), "launch_app must say where the output goes: " + r);
         // Give the stage a moment to show before the first snapshot.
         Thread.sleep(2500);
+
+        // The agent logs its start to stderr, which get_app_output must return (#26).
+        String output = tool("get_app_output", JSON.createObjectNode().put("tail", 200));
+        assertTrue(output.contains("Swing MCP Agent started"), output);
     }
 
     @Test
