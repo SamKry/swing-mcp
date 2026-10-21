@@ -16,6 +16,7 @@ it back through a response file.
 | `command` | string | yes | Full java command line, e.g. `java -jar /path/to/app.jar` |
 | `workingDir` | string | no | Working directory for the launched process |
 | `sessionId` | string | no | Session id; auto-generated when omitted. Reusing an id replaces (and closes) that session |
+| `env` | object | no | Environment variables for the launched process, e.g. `{"HDF5_PLUGIN_PATH": "./plugins"}`. Added to (and overriding) the server's environment, for this launch only |
 
 **Returns:** session info (session id, mode, PID, agent port). The new session
 becomes the active one.
@@ -25,6 +26,14 @@ becomes the active one.
   variable) to point at the swing-mcp-agent shaded jar.
 - A launched application is terminated when the session is closed with
   `stop_app`.
+- The `-javaagent` argument is inserted right after the java launcher (`java`,
+  `javaw`, with or without a path or `.exe`), so JVM options belong in `command`
+  after it, and a wrapper in front of it keeps working, e.g.
+  `env HDF5_PLUGIN_PATH=./plugins java -jar app.jar`. When the command contains no
+  java launcher, the argument goes after the first token.
+- Use `env` for variables an application's own launcher script would normally
+  set (native library paths, plugin directories): without them, an application
+  may start but fail silently later.
 
 ## `attach_to_app`
 

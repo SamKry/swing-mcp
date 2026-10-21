@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `launch_app` inserted the `-javaagent` argument after the first token of the command, so a
+  wrapper in front of `java` broke the launch (`env VAR=value java -jar app.jar` failed with
+  `env: illegal option -- j`). The argument now goes right after the java launcher (`java`,
+  `javaw`, with or without a path or `.exe`), falling back to the old position when the
+  command has none ([#25](https://github.com/crosstech-solutions-bv/swing-mcp/issues/25)).
 - Components of anonymous classes (`new JTabbedPane() { ... }`) could not be found with
   `find_component` by `CLASS` and were reported with an empty `componentClass` in
   snapshots, because both relied on `Class.getSimpleName()`. Class matching now covers the
@@ -35,7 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([#26](https://github.com/crosstech-solutions-bv/swing-mcp/issues/26)).
 - `launch_app`, `app_status` and `list_sessions` report `outputFile` for launched
   applications.
-
+- `launch_app` takes an optional `env` object of environment variables for the launched
+  process, for variables an application's own launcher would normally set (native library
+  or plugin paths). Previously the only way was to set them in the MCP server's own
+  environment, which needs a server restart and applies to every launch
+  ([#25](https://github.com/crosstech-solutions-bv/swing-mcp/issues/25)).
+  
 ## [1.3.0] - 2026-09-14
 
 ### Added
