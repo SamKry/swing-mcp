@@ -104,6 +104,44 @@ class DemoFxToolkitIT {
     }
 
     @Test
+    @DisplayName("a snapshot can start at a node, stop at a depth, and reports tooltips (#21)")
+    void snapshotScope() throws Exception {
+        SnapshotNode shallow = toolkit.takeSnapshot(Map.of("maxDepth", 1));
+        assertEquals(Boolean.TRUE, shallow.truncated());
+        assertTrue(allNodes(shallow).stream().anyMatch(d -> d.omittedChildren() != null),
+            "a node cut off by maxDepth must say how many children it has");
+
+        String submit = uidOf("submitButton");
+        SnapshotNode subtree = toolkit.takeSnapshot(Map.of("uid", submit));
+        assertEquals(1, subtree.components().size());
+        ComponentDescriptor root = subtree.components().get(0);
+        assertEquals(submit, root.uid());
+        assertEquals("Submit the form", root.tooltip());
+        assertEquals("Submit the form", toolkit.getComponentDetails(Map.of("uid", submit)).get("tooltip"));
+    }
+
+    @Test
+    @DisplayName("the server's VISIBLE_ONLY filter drops invisible nodes (#21)")
+    void visibleOnlyFilter() throws Exception {
+        String status = uidOf("statusLabel");
+        toolkit.invokeOnUiThread(() -> {
+            javafx.stage.Window.getWindows().get(0).getScene().lookup("#statusLabel").setVisible(false);
+            return null;
+        }, 5000);
+        try {
+            List<ComponentDescriptor> all = allNodes(toolkit.takeSnapshot(Map.of("filter", "ALL")));
+            assertTrue(all.stream().anyMatch(d -> d.uid().equals(status)), "ALL keeps the hidden label");
+            List<ComponentDescriptor> visible = allNodes(toolkit.takeSnapshot(Map.of("filter", "VISIBLE_ONLY")));
+            assertTrue(visible.stream().noneMatch(d -> d.uid().equals(status)), "VISIBLE_ONLY must drop it");
+        } finally {
+            toolkit.invokeOnUiThread(() -> {
+                javafx.stage.Window.getWindows().get(0).getScene().lookup("#statusLabel").setVisible(true);
+                return null;
+            }, 5000);
+        }
+    }
+
+    @Test
     @DisplayName("skin internals are filtered out of the snapshot")
     void snapshotExcludesSkinInternals() throws Exception {
         SnapshotNode snapshot = toolkit.takeSnapshot(Map.of());

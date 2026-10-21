@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import solutions.crosstech.swingmcp.common.command.CommandRequest;
 import solutions.crosstech.swingmcp.common.command.CommandResponse;
 import solutions.crosstech.swingmcp.common.enums.CommandType;
 import solutions.crosstech.swingmcp.server.config.SwingMcpProperties;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ServicesTest {
 
     private final ConcurrentLinkedQueue<CommandType> received = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<CommandRequest> requests = new ConcurrentLinkedQueue<>();
     private FakeAgentServer server;
     private SessionRegistry registry;
     private SwingMcpProperties properties;
@@ -43,6 +45,7 @@ class ServicesTest {
     void setUp() throws Exception {
         server = new FakeAgentServer(req -> {
             received.add(req.type());
+            requests.add(req);
             if (req.type() == CommandType.TAKE_SCREENSHOT) {
                 return new CommandResponse(req.requestId(), true, screenshotPayload(), null);
             }
@@ -74,6 +77,15 @@ class ServicesTest {
             CommandType.TAKE_SNAPSHOT, CommandType.GET_COMPONENT_DETAILS,
             CommandType.FIND_COMPONENT, CommandType.GET_TABLE_DATA,
             CommandType.GET_LIST_ITEMS)));
+    }
+
+    @Test
+    void snapshotServiceForwardsScopeParams() {
+        SnapshotService service = new SnapshotService(registry);
+        service.takeSnapshot(null, null, "comp-7", 2, 50);
+        assertEquals(Map.of("uid", "comp-7", "maxDepth", 2, "maxNodes", 50), requests.poll().params());
+        service.takeSnapshot(1, "VISIBLE_ONLY");
+        assertEquals(Map.of("windowIndex", 1, "filter", "VISIBLE_ONLY"), requests.poll().params());
     }
 
     @Test

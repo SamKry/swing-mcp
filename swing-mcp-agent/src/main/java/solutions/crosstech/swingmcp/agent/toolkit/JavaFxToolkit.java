@@ -164,18 +164,26 @@ public class JavaFxToolkit extends AbstractUiToolkit {
     public SnapshotNode takeSnapshot(Map<String, Object> p) throws Exception {
         return onUi(() -> {
             scene.prune();
-            Window win = targetWindow(p);
+            // Wire contract (SnapshotService.takeSnapshot): an optional uid limits the
+            // snapshot to that node's subtree; filter is VISIBLE_ONLY from the server.
+            String uid = str(p, "uid");
+            Node root = uid == null || uid.isBlank() ? null : scene.node(uid);
+            Window win = root == null ? targetWindow(p)
+                : root.getScene() == null ? null : root.getScene().getWindow();
             if (win == null) {
                 return new SnapshotNode("No window", "null", 0, 0, 0, 0, List.of());
             }
-            boolean visibleOnly = "VISIBLE".equalsIgnoreCase(str(p, "filter"));
+            String filter = str(p, "filter");
+            boolean visibleOnly = "VISIBLE_ONLY".equalsIgnoreCase(filter) || "VISIBLE".equalsIgnoreCase(filter);
             FxScene.Budget budget = new FxScene.Budget(
                 Math.max(1, intOr(p, "maxNodes", DEFAULT_MAX_NODES)),
                 intOr(p, "maxDepth", Integer.MAX_VALUE));
-            Scene sc = FxScene.sceneOf(win);
-            List<ComponentDescriptor> children = sc == null || sc.getRoot() == null
-                ? List.of()
-                : List.of(scene.describe(sc.getRoot(), visibleOnly, budget, 0));
+            if (root == null) {
+                Scene sc = FxScene.sceneOf(win);
+                root = sc == null ? null : sc.getRoot();
+            }
+            ComponentDescriptor top = root == null ? null : scene.describe(root, visibleOnly, budget, 0);
+            List<ComponentDescriptor> children = top == null ? List.of() : List.of(top);
             return new SnapshotNode(
                 FxScene.titleOf(win),
                 win.getClass().getSimpleName(),
@@ -230,6 +238,9 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             m.put("componentClass", n.getClass().getSimpleName());
             m.put("id", n.getId());
             m.put("text", FxScene.textOf(n));
+            if (FxScene.tooltipOf(n) != null) {
+                m.put("tooltip", FxScene.tooltipOf(n));
+            }
             m.put("enabled", !n.isDisabled());
             m.put("visible", n.isVisible());
             m.put("focused", n.isFocused());
@@ -307,6 +318,9 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             m.put("componentClass", node.getClass().getSimpleName());
             m.put("id", node.getId());
             m.put("text", FxScene.textOf(node));
+            if (FxScene.tooltipOf(node) != null) {
+                m.put("tooltip", FxScene.tooltipOf(node));
+            }
             m.put("enabled", !node.isDisabled());
             m.put("visible", node.isVisible());
             m.put("x", (int) b.getMinX());

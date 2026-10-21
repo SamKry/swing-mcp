@@ -189,6 +189,13 @@ class ServerRoundTripIT {
         assertTrue(snap.contains("Swing MCP JavaFX Demo"), snap.substring(0, Math.min(300, snap.length())));
         firstFxUid(snap);
         assertFalse(snap.contains("LabeledText"), "skin internals leaked through the server");
+
+        // maxDepth and uid reach the agent through the server contract (#21).
+        String shallow = tool("take_snapshot", JSON.createObjectNode().put("maxDepth", 1));
+        assertTrue(shallow.contains("omittedChildren"), shallow);
+        String root = firstFxUid(shallow);
+        String subtree = tool("take_snapshot", JSON.createObjectNode().put("uid", root).put("maxNodes", 1));
+        assertTrue(subtree.contains("\"truncated\":true"), subtree);
     }
 
     @Test
