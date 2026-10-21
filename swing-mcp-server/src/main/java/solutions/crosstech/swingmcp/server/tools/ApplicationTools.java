@@ -72,4 +72,17 @@ public class ApplicationTools {
     public String appStatus() {
         return ToolJson.toJson(applicationService.status());
     }
+
+    @McpTool(name = "get_app_output",
+        annotations = @McpTool.McpAnnotations(title = "Read application output", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+        description = """
+        Read the stdout/stderr of an application started with launch_app: the last lines by default, \
+        or the lines after sinceLine (pass the previous toLine to follow new output). \
+        Use it to find stack traces and log messages the UI does not show.""")
+    public String getAppOutput(
+            @McpToolParam(description = "Number of last lines to return (default 50, max 500)", required = false) Integer tail,
+            @McpToolParam(description = "Return the lines after this line number instead of a tail", required = false) Integer sinceLine,
+            @McpToolParam(description = "Optional session id; the active session when omitted", required = false) String sessionId) {
+        return ToolJson.toJson(applicationService.output(sessionId, tail, sinceLine));
+    }
 }

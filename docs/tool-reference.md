@@ -53,7 +53,20 @@ Make a session the active one that other tools operate on.
 
 ### `app_status`
 Get the status of the active session: `connected`, `sessionId`,
-`sessionCount`, `alive`, `mode`, `pid`, `agentPort`, `description`.
+`sessionCount`, `alive`, `mode`, `pid`, `agentPort`, `description`, and
+`outputFile` for a launched application.
+
+### `get_app_output`
+Read the captured stdout/stderr of a launched application: the last lines, or
+the lines after `sinceLine` to follow new output. Returns `totalLines`,
+`fromLine`, `toLine`, `text`, and `more` when lines were left out (at most 500
+lines / ~40,000 characters per call).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tail` | number | no | Number of last lines (default 50, max 500) |
+| `sinceLine` | number | no | Return the lines after this line number instead |
+| `sessionId` | string | no | Session id; the active session when omitted |
 
 ## Inspection
 
@@ -184,6 +197,9 @@ Set the text/value of a text component, `JSpinner`, `JSlider`, or editable
 |---|---|---|---|
 | `uid` | string | yes | Component UID |
 | `text` | string | yes | Text or value to enter |
+
+A numeric `JSpinner` gets a value of its model's number class (`Integer`, `Double`, …);
+fractions for integer spinners and out-of-range values are rejected.
 
 ### `select_option`
 Select an option in a `JList`, `JComboBox`, or `JTabbedPane` (Swing) — or a
