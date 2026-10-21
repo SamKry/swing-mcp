@@ -8,7 +8,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 /**
- * User-interaction operations (click, fill, select, keyboard, drag, scroll)
+ * User-interaction operations (click, fill, select, keyboard, drag, scroll, wheel)
  * on components of the target application.
  */
 @Service
@@ -217,5 +217,23 @@ public class InteractionService {
             params.put("amount", amount);
         }
         return registry.require().send(CommandType.SCROLL, params);
+    }
+
+    /**
+     * Turns the mouse wheel over a component, optionally at an offset from its
+     * top-left corner, with modifier keys held, or with the real OS mouse.
+     */
+    public Object mouseWheel(String uid, int rotation, Integer x, Integer y, String modifiers, Boolean robot) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("uid", uid);
+        params.put("rotation", rotation);
+        putPoint(params, "x", x, "y", y);
+        if (modifiers != null && !modifiers.isBlank()) {
+            params.put("modifiers", modifiers);
+        }
+        if (Boolean.TRUE.equals(robot)) {
+            params.put("robot", true);
+        }
+        return registry.require().send(CommandType.MOUSE_WHEEL, params);
     }
 }

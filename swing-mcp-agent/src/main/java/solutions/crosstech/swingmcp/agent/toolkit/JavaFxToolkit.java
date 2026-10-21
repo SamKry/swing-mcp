@@ -3,6 +3,7 @@ package solutions.crosstech.swingmcp.agent.toolkit;
 import javafx.application.Platform;
 import javafx.event.Event;
 import javafx.geometry.Bounds;
+import javafx.geometry.Point2D;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -27,6 +28,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import solutions.crosstech.swingmcp.agent.ClassNames;
@@ -59,6 +61,11 @@ public class JavaFxToolkit extends AbstractUiToolkit {
 
     private static final int DEFAULT_MAX_NODES = 2000;
     private static final int DEFAULT_MAX_ROWS = 200;
+    /**
+     * Pixels per wheel notch, and the multiplier a physical wheel's ScrollEvent
+     * reports with it: JavaFX's own default on every desktop platform.
+     */
+    private static final double WHEEL_NOTCH_PX = 40;
 
     private final FxScene scene = new FxScene();
     private volatile Window activeWindow;
@@ -1086,27 +1093,120 @@ public class JavaFxToolkit extends AbstractUiToolkit {
             + "use the control's own API, or click the source and target in sequence");
     }
 
+    /**
+     * Moves the enclosing {@code ScrollPane} by {@code amount} tenths of its range,
+     * or, for a node with none (ListView, TableView, TreeView and custom controls
+     * scroll themselves on ScrollEvents), sends {@code amount} wheel notches.
+     * {@code amount} defaults to {@value UiToolkit#DEFAULT_SCROLL_AMOUNT} either way.
+     */
     @Override
-    public String scroll(Map<String, Object> p) throws Exception {
+    public Object scroll(Map<String, Object> p) throws Exception {
         String direction = str(p, "direction") == null ? "DOWN" : str(p, "direction").toUpperCase();
-        double amount = intOr(p, "amount", 1) * 0.1;
-        return onUi(() -> {
+        if (!List.of("UP", "DOWN", "LEFT", "RIGHT").contains(direction)) {
+            throw new IllegalArgumentException("Unknown direction: " + direction);
+        }
+        int amount = intOr(p, "amount", DEFAULT_SCROLL_AMOUNT);
+        return action(() -> {
             Node n = nodeParam(p);
             javafx.scene.control.ScrollPane pane = n instanceof javafx.scene.control.ScrollPane sp
                 ? sp : enclosingScrollPane(n);
             if (pane == null) {
-                throw new IllegalArgumentException("Component " + str(p, "uid")
-                    + " is not inside a ScrollPane");
+                boolean horizontal = direction.equals("LEFT") || direction.equals("RIGHT");
+                int rotation = direction.equals("DOWN") || direction.equals("RIGHT") ? amount : -amount;
+                requireWheelNotches(rotation);
+                Bounds b = n.getBoundsInLocal();
+                Node target = fireWheel(n, new Point2D(b.getWidth() / 2, b.getHeight() / 2), rotation,
+                    new Modifiers(horizontal, false, false, false));
+                return "Scrolled " + direction + " by " + amount + " mouse-wheel notch(es) on "
+                    + ClassNames.displayName(target.getClass());
             }
+            double step = amount * 0.1;
             switch (direction) {
-                case "UP" -> pane.setVvalue(clamp(pane.getVvalue() - amount));
-                case "DOWN" -> pane.setVvalue(clamp(pane.getVvalue() + amount));
-                case "LEFT" -> pane.setHvalue(clamp(pane.getHvalue() - amount));
-                case "RIGHT" -> pane.setHvalue(clamp(pane.getHvalue() + amount));
-                default -> throw new IllegalArgumentException("Unknown direction: " + direction);
+                case "UP" -> pane.setVvalue(clamp(pane.getVvalue() - step));
+                case "DOWN" -> pane.setVvalue(clamp(pane.getVvalue() + step));
+                case "LEFT" -> pane.setHvalue(clamp(pane.getHvalue() - step));
+                default -> pane.setHvalue(clamp(pane.getHvalue() + step));
             }
-            return "Scrolled " + direction;
+            return "Scrolled " + direction + " by " + amount;
         });
+    }
+
+    /**
+     * Wire contract (InteractionService.mouseWheel): {@code uid}, {@code rotation}
+     * (notches, positive = down, as in AWT), optional {@code x}/{@code y} relative
+     * to the node's top-left corner (default its center) and {@code modifiers}
+     * such as "CTRL+SHIFT". {@code robot} does not apply: events are always
+     * delivered to the node.
+     */
+    @Override
+    public Object mouseWheel(Map<String, Object> p) throws Exception {
+        String uid = required(p, "uid");
+        int rotation = intOr(p, "rotation", 0);
+        String modifiers = str(p, "modifiers") == null ? "" : str(p, "modifiers");
+        Modifiers mods = Modifiers.parse(modifiers);
+        return action(() -> {
+            Node n = scene.node(uid);
+            if (n.isDisabled()) {
+                throw new IllegalStateException("Component " + uid + " is disabled");
+            }
+            requireWheelNotches(rotation);
+            Point2D at = pointIn(n, p);
+            Node target = fireWheel(n, at, rotation, mods);
+            return "Mouse wheel rotated " + rotation + " notch(es) at (" + (int) at.getX() + "," + (int) at.getY()
+                + ") of " + uid + (modifiers.isBlank() ? "" : " with " + modifiers.toUpperCase())
+                + "; delivered to " + ClassNames.displayName(target.getClass());
+        });
+    }
+
+    private static void requireWheelNotches(int rotation) {
+        if (rotation == 0 || Math.abs(rotation) > MAX_WHEEL_NOTCHES) {
+            throw new IllegalArgumentException("Wheel notches must be between 1 and " + MAX_WHEEL_NOTCHES
+                + " in either direction, got " + rotation);
+        }
+    }
+
+    /**
+     * Fires one {@link ScrollEvent} per notch at the deepest node under {@code at}
+     * (relative to {@code n}'s top-left corner), so it bubbles up as a real one
+     * would. The event matches what a physical wheel produces: 40 px per notch with
+     * multiplier 40, no gesture totals, and Shift moving the delta to the horizontal
+     * axis. Returns the node it was fired at.
+     */
+    private Node fireWheel(Node n, Point2D at, int rotation, Modifiers mods) {
+        Bounds b = n.getBoundsInLocal();
+        Point2D scenePt = n.localToScene(b.getMinX() + at.getX(), b.getMinY() + at.getY());
+        Point2D screenPt = n.localToScreen(b.getMinX() + at.getX(), b.getMinY() + at.getY());
+        double sx = screenPt == null ? scenePt.getX() : screenPt.getX();
+        double sy = screenPt == null ? scenePt.getY() : screenPt.getY();
+        Node target = deepestAt(n, scenePt.getX(), scenePt.getY());
+        // AWT counts positive notches as "down"; JavaFX deltas are positive "up".
+        double delta = -Integer.signum(rotation) * WHEEL_NOTCH_PX;
+        double dx = mods.shift() ? delta : 0;
+        double dy = mods.shift() ? 0 : delta;
+        for (int i = 0; i < Math.abs(rotation); i++) {
+            Event.fireEvent(target, new ScrollEvent(ScrollEvent.SCROLL,
+                scenePt.getX(), scenePt.getY(), sx, sy,
+                mods.shift(), mods.ctrl(), mods.alt(), mods.meta(),
+                false, false, dx, dy, 0, 0, WHEEL_NOTCH_PX, WHEEL_NOTCH_PX,
+                ScrollEvent.HorizontalTextScrollUnits.NONE, 0,
+                ScrollEvent.VerticalTextScrollUnits.NONE, 0, 0, null));
+        }
+        return target;
+    }
+
+    /** The deepest visible, mouse-receiving descendant of {@code n} at a scene point. */
+    private static Node deepestAt(Node n, double sceneX, double sceneY) {
+        if (n instanceof Parent parent) {
+            List<Node> kids = parent.getChildrenUnmodifiable();
+            for (int i = kids.size() - 1; i >= 0; i--) {
+                Node kid = kids.get(i);
+                if (kid.isVisible() && !kid.isMouseTransparent()
+                    && kid.contains(kid.sceneToLocal(sceneX, sceneY))) {
+                    return deepestAt(kid, sceneX, sceneY);
+                }
+            }
+        }
+        return n;
     }
 
     private static double clamp(double v) {

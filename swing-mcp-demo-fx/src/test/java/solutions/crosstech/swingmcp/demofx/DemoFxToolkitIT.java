@@ -1,7 +1,13 @@
 package solutions.crosstech.swingmcp.demofx;
 
 import javafx.application.Platform;
+import javafx.event.EventHandler;
+import javafx.scene.Node;
+import javafx.scene.control.ListView;
+import javafx.scene.control.skin.VirtualFlow;
+import javafx.scene.input.ScrollEvent;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -14,8 +20,11 @@ import solutions.crosstech.swingmcp.common.dto.SnapshotNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -78,6 +87,58 @@ class DemoFxToolkitIT {
         List<ComponentDescriptor> flat = new ArrayList<>();
         flatten(snapshot.components(), flat);
         return flat;
+    }
+
+    /** Runs a query on the FX thread and waits for it. */
+    private static <T> T fx(Callable<T> work) throws Exception {
+        AtomicReference<T> out = new AtomicReference<>();
+        AtomicReference<Exception> err = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        Platform.runLater(() -> {
+            try {
+                out.set(work.call());
+            } catch (Exception e) {
+                err.set(e);
+            } finally {
+                done.countDown();
+            }
+        });
+        assertTrue(done.await(10, TimeUnit.SECONDS), "FX thread did not respond");
+        if (err.get() != null) {
+            throw err.get();
+        }
+        return out.get();
+    }
+
+    /** Polls until {@code condition} holds, failing after five seconds. */
+    private static void waitUntil(String what, Callable<Boolean> condition) throws Exception {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (!condition.call()) {
+            assertTrue(System.currentTimeMillis() < deadline, "timed out waiting for: " + what);
+            Thread.sleep(50);
+        }
+    }
+
+    private static ListView<?> logList() throws Exception {
+        return fx(() -> (ListView<?>) Window.getWindows().get(0).getScene().lookup("#logList"));
+    }
+
+    /** Index of the first visible row of the Canvas tab's log list, or -1 before it has laid out. */
+    private static int firstVisibleLogLine() throws Exception {
+        ListView<?> list = logList();
+        return fx(() -> {
+            VirtualFlow<?> flow = (VirtualFlow<?>) list.lookup(".virtual-flow");
+            return flow == null || flow.getFirstVisibleCell() == null ? -1 : flow.getFirstVisibleCell().getIndex();
+        });
+    }
+
+    private void showCanvasTab() throws Exception {
+        toolkit.selectOption(Map.of("uid", uidOf("tabs"), "text", "Canvas"));
+        waitUntil("logList laid out", () -> firstVisibleLogLine() >= 0);
+    }
+
+    private String canvasState() throws Exception {
+        return String.valueOf(toolkit.getComponentDetails(Map.of("uid", uidOf("canvasState"))).get("text"));
     }
 
     // ---- tests ------------------------------------------------------------
@@ -399,5 +460,96 @@ class DemoFxToolkitIT {
         UnsupportedOperationException e = assertThrows(UnsupportedOperationException.class,
             () -> toolkit.evaluateJava(Map.of("code", "1+1")));
         assertTrue(e.getMessage().contains("javafx"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("mouse_wheel zooms a custom canvas, and modifiers pan it instead")
+    void mouseWheelDrivesCustomCanvas() throws Exception {
+        showCanvasTab();
+        String canvas = uidOf("graphCanvas");
+        String before = canvasState();
+        assertTrue(before.startsWith("Canvas zoom "), before);
+        int zoom = Integer.parseInt(before.replaceAll("Canvas zoom (\\d+)%.*", "$1"));
+
+        String result = String.valueOf(toolkit.mouseWheel(Map.of("uid", canvas, "rotation", -2)));
+        assertTrue(result.contains("2 notch"), result);
+        assertTrue(canvasState().startsWith("Canvas zoom " + (zoom + 20) + "%"), canvasState());
+
+        String zoomed = canvasState();
+        toolkit.mouseWheel(Map.of("uid", canvas, "rotation", 1, "x", 10, "y", 10, "modifiers", "CTRL"));
+        assertTrue(canvasState().startsWith("Canvas zoom " + (zoom + 20) + "%"), "CTRL must pan, not zoom");
+        assertFalse(canvasState().equals(zoomed), "CTRL+wheel moved the view: " + canvasState());
+    }
+
+    @Test
+    @DisplayName("scroll moves a ListView, which has no enclosing ScrollPane")
+    void scrollFallsBackToWheelOnListView() throws Exception {
+        showCanvasTab();
+        ListView<?> list = logList();
+        fx(() -> {
+            list.scrollTo(0);
+            return null;
+        });
+        waitUntil("logList at the top", () -> firstVisibleLogLine() == 0);
+        String result = String.valueOf(toolkit.scroll(Map.of("uid", uidOf("logList"), "direction", "DOWN", "amount", 5)));
+        assertTrue(result.contains("mouse-wheel"), result);
+        waitUntil("logList scrolled down", () -> firstVisibleLogLine() > 0);
+    }
+
+    @Test
+    @DisplayName("mouse_wheel fires ScrollEvents like a physical wheel's, at the point, with SHORTCUT")
+    void mouseWheelEventsMatchAPhysicalWheel() throws Exception {
+        showCanvasTab();
+        String canvas = uidOf("graphCanvas");
+        List<ScrollEvent> events = new CopyOnWriteArrayList<>();
+        Node node = fx(() -> Window.getWindows().get(0).getScene().lookup("#graphCanvas"));
+        EventHandler<ScrollEvent> filter = events::add;
+        fx(() -> {
+            node.addEventFilter(ScrollEvent.SCROLL, filter);
+            return null;
+        });
+        try {
+            toolkit.mouseWheel(Map.of("uid", canvas, "rotation", 2, "x", 30, "y", 40, "modifiers", "SHORTCUT"));
+            assertEquals(2, events.size(), "one event per notch");
+            for (ScrollEvent e : events) {
+                // As JavaFX reports one notch of a physical wheel: 40 px, multiplier 40, no gesture totals.
+                assertEquals(-40, e.getDeltaY(), 0.001, "positive rotation scrolls down");
+                assertEquals(0, e.getDeltaX(), 0.001);
+                assertEquals(40, e.getMultiplierY(), 0.001);
+                assertEquals(0, e.getTotalDeltaY(), 0.001);
+                assertEquals(30, e.getX(), 0.5);
+                assertEquals(40, e.getY(), 0.5);
+                assertTrue(e.isShortcutDown(), "SHORTCUT held");
+            }
+        } finally {
+            fx(() -> {
+                node.removeEventFilter(ScrollEvent.SCROLL, filter);
+                return null;
+            });
+        }
+    }
+
+    @Test
+    @DisplayName("scroll without an amount moves three notches, the same default as with a scroll pane")
+    void scrollDefaultsToThreeUnits() throws Exception {
+        showCanvasTab();
+        String before = canvasState();
+        int zoom = Integer.parseInt(before.replaceAll("Canvas zoom (\\d+)%.*", "$1"));
+        String result = String.valueOf(toolkit.scroll(Map.of("uid", uidOf("graphCanvas"), "direction", "UP")));
+        assertTrue(result.contains("by 3 mouse-wheel notch(es)"), result);
+        assertTrue(canvasState().startsWith("Canvas zoom " + (zoom + 30) + "%"), canvasState());
+    }
+
+    @Test
+    @DisplayName("mouse_wheel rejects a point outside the component, an unknown modifier and zero notches")
+    void mouseWheelValidatesInput() throws Exception {
+        showCanvasTab();
+        String canvas = uidOf("graphCanvas");
+        assertThrows(IllegalArgumentException.class,
+            () -> toolkit.mouseWheel(Map.of("uid", canvas, "rotation", 1, "x", 99_999, "y", 1)));
+        assertThrows(IllegalArgumentException.class,
+            () -> toolkit.mouseWheel(Map.of("uid", canvas, "rotation", 1, "modifiers", "HYPER")));
+        assertThrows(IllegalArgumentException.class,
+            () -> toolkit.mouseWheel(Map.of("uid", canvas, "rotation", 0)));
     }
 }
