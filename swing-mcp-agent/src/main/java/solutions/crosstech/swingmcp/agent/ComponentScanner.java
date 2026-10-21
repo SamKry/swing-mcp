@@ -93,7 +93,7 @@ public class ComponentScanner {
         Rectangle bounds = win.getBounds();
         return new SnapshotNode(
             getWindowTitle(win),
-            win.getClass().getSimpleName(),
+            ClassNames.displayName(win.getClass()),
             bounds.x, bounds.y, bounds.width, bounds.height,
             children,
             budget.truncated ? Boolean.TRUE : null
@@ -134,7 +134,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index++);
                 info.put("title", getWindowTitle(w));
-                info.put("class", w.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(w.getClass()));
                 Rectangle b = w.getBounds();
                 info.put("x", b.x);
                 info.put("y", b.y);
@@ -351,7 +351,7 @@ public class ComponentScanner {
         } else if (comp instanceof JComboBox<?> combo && combo.isEditable()) {
             combo.setSelectedItem(text);
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support text input: " + ClassNames.displayName(comp.getClass()));
         }
         return "Filled: " + uid;
     }
@@ -410,7 +410,7 @@ public class ComponentScanner {
                 tabs.setSelectedIndex(match);
             }
         } else {
-            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + comp.getClass().getSimpleName());
+            throw new IllegalArgumentException("Component " + uid + " does not support option selection: " + ClassNames.displayName(comp.getClass()));
         }
         return "Option selected on: " + uid;
     }
@@ -438,19 +438,56 @@ public class ComponentScanner {
     }
 
     /**
-     * Selects a table cell by row and column.
+     * Selects a table cell by row and column, like a mouse click on it.
+     * Params: uid, row, col (default 0), toggle (Ctrl/Cmd-click), extend
+     * (Shift-click), or rows (a list of rows that becomes the whole selection).
      */
     public String selectTableCell(Map<String, Object> params) {
         String uid = getString(params, "uid");
         Component comp = resolveUid(uid);
-        int row = getInt(params, "row", 0);
         int col = getInt(params, "col", 0);
+        boolean toggle = getBoolean(params, "toggle", false);
+        boolean extend = getBoolean(params, "extend", false);
 
         if (!(comp instanceof JTable table)) {
             throw new IllegalArgumentException("Component " + uid + " is not a JTable");
         }
-        table.changeSelection(row, col, false, false);
-        return "Table cell selected: [" + row + "," + col + "]";
+        requireIndex("col", col, table.getColumnCount());
+        if (params.get("rows") instanceof List<?> rows) {
+            if (toggle || extend) {
+                throw new IllegalArgumentException("rows replaces the whole selection; "
+                    + "it cannot be combined with toggle or extend");
+            }
+            table.clearSelection();
+            boolean first = true;
+            for (Object r : new java.util.LinkedHashSet<>(rows)) {
+                int row = r instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(r));
+                requireIndex("row", row, table.getRowCount());
+                table.changeSelection(row, col, !first, false);
+                first = false;
+            }
+        } else {
+            if (params.get("row") == null) {
+                throw new IllegalArgumentException("Provide row (optionally with toggle or extend) or rows");
+            }
+            int row = getInt(params, "row", 0);
+            requireIndex("row", row, table.getRowCount());
+            table.changeSelection(row, col, toggle, extend);
+        }
+        String selection = "Table selection: rows " + java.util.Arrays.toString(table.getSelectedRows())
+            + ", column " + table.getSelectedColumn();
+        if (table.getSelectionModel().getSelectionMode() == javax.swing.ListSelectionModel.SINGLE_SELECTION
+            && (toggle || extend || params.get("rows") instanceof List<?> l && l.size() > 1)) {
+            selection += " (this table allows only one selected row)";
+        }
+        return selection;
+    }
+
+    private static void requireIndex(String what, int index, int count) {
+        if (index < 0 || index >= count) {
+            throw new IllegalArgumentException(what + " " + index + " is out of range; the table has "
+                + count + (what.equals("row") ? " row(s)" : " column(s)"));
+        }
     }
 
     /**
@@ -661,7 +698,7 @@ public class ComponentScanner {
             }
         }
         if (any || "CLASS".equals(by)) {
-            if (comp.getClass().getSimpleName().toLowerCase().contains(query)) {
+            if (ClassNames.matches(comp.getClass(), query, true)) {
                 return true;
             }
         }
@@ -954,7 +991,7 @@ public class ComponentScanner {
                 Map<String, Object> info = new LinkedHashMap<>();
                 info.put("index", index);
                 info.put("title", dialog.getTitle());
-                info.put("class", dialog.getClass().getSimpleName());
+                info.put("class", ClassNames.displayName(dialog.getClass()));
                 info.put("modal", dialog.isModal());
                 JOptionPane pane = findDescendant(dialog, JOptionPane.class);
                 JFileChooser chooser = findDescendant(dialog, JFileChooser.class);
@@ -1097,7 +1134,7 @@ public class ComponentScanner {
             throw new IllegalStateException("No active window");
         }
         if (!(win instanceof Frame frame)) {
-            throw new IllegalArgumentException("Active window is not a Frame: " + win.getClass().getSimpleName());
+            throw new IllegalArgumentException("Active window is not a Frame: " + ClassNames.displayName(win.getClass()));
         }
         WindowState state = WindowState.valueOf(getString(params, "state").toUpperCase());
         int extended = switch (state) {
@@ -1183,7 +1220,7 @@ public class ComponentScanner {
         Rectangle bounds = comp.getBounds();
         ComponentDescriptor desc = new ComponentDescriptor(
             uid,
-            comp.getClass().getSimpleName(),
+            ClassNames.displayName(comp.getClass()),
             comp.getName(),
             text,
             comp.isEnabled(),
@@ -1271,7 +1308,7 @@ public class ComponentScanner {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("uid", assignUid(comp));
         info.put("class", comp.getClass().getName());
-        info.put("simpleName", comp.getClass().getSimpleName());
+        info.put("simpleName", ClassNames.displayName(comp.getClass()));
         info.put("name", comp.getName());
         info.put("text", extractText(comp));
         info.put("enabled", comp.isEnabled());
@@ -1334,7 +1371,7 @@ public class ComponentScanner {
         if (w instanceof java.awt.Dialog d) {
             return d.getTitle();
         }
-        return w.getClass().getSimpleName();
+        return ClassNames.displayName(w.getClass());
     }
 
     private JScrollPane findScrollPane(Component comp) {
@@ -1594,11 +1631,69 @@ public class ComponentScanner {
     }
 
     private Object parseSpinnerValue(JSpinner spinner, String text) {
-        javax.swing.SpinnerModel model = spinner.getModel();
-        if (model instanceof javax.swing.SpinnerNumberModel) {
-            return Double.parseDouble(text);
+        return spinnerValue(spinner.getModel(), text);
+    }
+
+    /**
+     * Converts {@code text} to the value a user typing into the spinner would
+     * commit. A {@link javax.swing.SpinnerNumberModel} keeps the number class of
+     * its current value (an integer model stays {@code Integer}), so application
+     * code casting {@code getValue()} keeps working; values outside the model's
+     * bounds are rejected instead of being set silently.
+     */
+    static Object spinnerValue(javax.swing.SpinnerModel model, String text) {
+        if (!(model instanceof javax.swing.SpinnerNumberModel numbers)) {
+            return text;
         }
-        return text;
+        java.math.BigDecimal parsed;
+        try {
+            parsed = new java.math.BigDecimal(text.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Spinner expects a number, got \"" + text + "\"");
+        }
+        Class<?> type = numbers.getNumber() == null ? Double.class : numbers.getNumber().getClass();
+        Number value;
+        try {
+            if (type == Integer.class) {
+                value = parsed.intValueExact();
+            } else if (type == Long.class) {
+                value = parsed.longValueExact();
+            } else if (type == Short.class) {
+                value = parsed.shortValueExact();
+            } else if (type == Byte.class) {
+                value = parsed.byteValueExact();
+            } else if (type == java.math.BigInteger.class) {
+                value = parsed.toBigIntegerExact();
+            } else if (type == java.math.BigDecimal.class) {
+                value = parsed;
+            } else if (type == Float.class) {
+                value = parsed.floatValue();
+            } else {
+                value = parsed.doubleValue();
+            }
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("Spinner holds " + type.getSimpleName()
+                + " values; \"" + text + "\" is not a whole number in that range");
+        }
+        if (outOfBounds(numbers.getMinimum(), value, true) || outOfBounds(numbers.getMaximum(), value, false)) {
+            throw new IllegalArgumentException("Value " + value + " is outside the spinner's range ["
+                + numbers.getMinimum() + ", " + numbers.getMaximum() + "]");
+        }
+        return value;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean outOfBounds(Comparable bound, Number value, boolean lower) {
+        if (bound == null) {
+            return false;
+        }
+        try {
+            int cmp = bound.compareTo(value);
+            return lower ? cmp > 0 : cmp < 0;
+        } catch (ClassCastException e) {
+            // Bound of a different Number class than the value: let the model decide.
+            return false;
+        }
     }
 
     private String getString(Map<String, Object> params, String key) {
@@ -1623,6 +1718,17 @@ public class ComponentScanner {
             return n.intValue();
         }
         return Integer.parseInt(val.toString());
+    }
+
+    private boolean getBoolean(Map<String, Object> params, String key, boolean defaultVal) {
+        Object val = params.get(key);
+        if (val == null) {
+            return defaultVal;
+        }
+        if (val instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(val.toString());
     }
 
     private long getLong(Map<String, Object> params, String key, long defaultVal) {

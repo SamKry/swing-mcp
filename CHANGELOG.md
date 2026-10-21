@@ -22,7 +22,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   image under keys the server did not read (`base64`, `format`), so the server decoded the
   string `"null"`. It now returns `imageBase64` and `mimeType` like the Swing toolkit, and
   the server rejects a result without image data instead of writing garbage.
-
+- `launch_app` inserted the `-javaagent` argument after the first token of the command, so a
+  wrapper in front of `java` broke the launch (`env VAR=value java -jar app.jar` failed with
+  `env: illegal option -- j`). The argument now goes right after the java launcher (`java`,
+  `javaw`, with or without a path or `.exe`), falling back to the old position when the
+  command has none ([#25](https://github.com/crosstech-solutions-bv/swing-mcp/issues/25)).
+- Components of anonymous classes (`new JTabbedPane() { ... }`) could not be found with
+  `find_component` by `CLASS` and were reported with an empty `componentClass` in
+  snapshots, because both relied on `Class.getSimpleName()`. Class matching now covers the
+  component's superclasses up to the toolkit base class (so `TabbedPane` finds an anonymous
+  `JTabbedPane`, and `JTable` finds `JTable` subclasses), an anonymous class's own name
+  (`MainFrame$1`), and, for queries containing a dot, the fully qualified name. Snapshots,
+  `find_component`, `list_windows` and `list_dialogs` report anonymous classes by their first
+  named superclass, e.g. `JTabbedPane (anonymous)`. Applies to Swing and JavaFX
+  ([#20](https://github.com/crosstech-solutions-bv/swing-mcp/issues/20)).
+- `fill` on a numeric `JSpinner` committed a `Double` regardless of the model, so an
+  integer spinner suddenly held a `Double` and application code such as
+  `(Integer) spinner.getValue()` threw a `ClassCastException`. The text is now converted
+  to the class of the model's current value (`Integer`, `Long`, `Short`, `Byte`, `Float`,
+  `Double`, `BigInteger`, `BigDecimal`), and fractions for integer models or values
+  outside the model's bounds are rejected with a clear error, as the spinner's own editor
+  would ([#22](https://github.com/crosstech-solutions-bv/swing-mcp/issues/22)).
+  
+### Added
+- `get_app_output` tool: read the captured stdout/stderr of an application started with
+  `launch_app`, either the last `tail` lines or the lines after `sinceLine` to follow new
+  output. Stack traces and log lines of a running application, often the only trace of an
+  error the UI swallows, were previously only shown (last lines) when a launch failed, and
+  an agent had to guess the log file's location in the temp directory. Read-only; at most
+  500 lines and about 40,000 characters per call. The tool count is now 40
+  ([#26](https://github.com/crosstech-solutions-bv/swing-mcp/issues/26)).
+- `launch_app`, `app_status` and `list_sessions` report `outputFile` for launched
+  applications.
+- `launch_app` takes an optional `env` object of environment variables for the launched
+  process, for variables an application's own launcher would normally set (native library
+  or plugin paths). Previously the only way was to set them in the MCP server's own
+  environment, which needs a server restart and applies to every launch
+  ([#25](https://github.com/crosstech-solutions-bv/swing-mcp/issues/25)).
+  - `select_table_cell` can build a multi-selection: `toggle` adds or removes a row
+  (Ctrl/Cmd-click), `extend` selects the range from the anchor (Shift-click), and `rows`
+  sets several selected rows in one call (`[]` clears the selection). The result now
+  reports the resulting selection. `row` and `col` are optional (`col` defaults to 0), and
+  out-of-range indices are rejected instead of being passed to the table. Works for
+  `JTable` and `TableView`; the JavaFX demo table now allows multiple selection
+  ([#18](https://github.com/crosstech-solutions-bv/swing-mcp/issues/18)).
+  
 ## [1.3.0] - 2026-09-14
 
 ### Added

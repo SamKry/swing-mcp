@@ -175,10 +175,18 @@ class ServerRoundTripIT {
     void launch() throws Exception {
         String demoJar = System.getProperty("swingmcp.demofx.jar");
         String cmd = "java --module-path \"" + javafxModulePath() + "\" --add-modules javafx.controls -jar \"" + demoJar + "\"";
-        String r = tool("launch_app", JSON.createObjectNode().put("command", cmd));
+        ObjectNode args = JSON.createObjectNode().put("command", cmd);
+        // env is an object parameter (#25); it must survive the server's schema binding.
+        args.putObject("env").put("SWING_MCP_ROUND_TRIP", "1");
+        String r = tool("launch_app", args);
         assertTrue(r.contains("pid") || r.contains("session"), r);
+        assertTrue(r.contains("outputFile"), "launch_app must say where the output goes: " + r);
         // Give the stage a moment to show before the first snapshot.
         Thread.sleep(2500);
+
+        // The agent logs its start to stderr, which get_app_output must return (#26).
+        String output = tool("get_app_output", JSON.createObjectNode().put("tail", 200));
+        assertTrue(output.contains("Swing MCP Agent started"), output);
     }
 
     @Test
@@ -236,6 +244,12 @@ class ServerRoundTripIT {
         String data = tool("get_table_data", JSON.createObjectNode().put("uid", table).put("startRow", 1).put("endRow", 3));
         assertTrue(data.contains("Gasket"), data);
         assertFalse(data.contains("Bearing"), "row 0 should be excluded by startRow=1: " + data);
+
+        // select_table_cell takes a rows array (#18); the schema must carry it through.
+        ObjectNode select = JSON.createObjectNode().put("uid", table);
+        select.putArray("rows").add(0).add(2);
+        String selected = tool("select_table_cell", select);
+        assertTrue(selected.contains("rows [0, 2]"), selected);
     }
 
     @Test

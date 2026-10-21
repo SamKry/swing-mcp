@@ -1,6 +1,7 @@
 package solutions.crosstech.swingmcp.server.tools;
 
 import solutions.crosstech.swingmcp.server.service.InteractionService;
+import java.util.List;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -95,12 +96,18 @@ public class InteractionTools {
 
     @McpTool(name = "select_table_cell",
         annotations = @McpTool.McpAnnotations(title = "Select table cell", readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false),
-        description = "Select a JTable cell by zero-based row and column.")
+        description = """
+        Select a JTable/TableView cell by zero-based row and column, like a click. \
+        For multi-selection use toggle (Ctrl/Cmd-click) or extend (Shift-click), \
+        or pass rows to set several selected rows at once.""")
     public String selectTableCell(
-            @McpToolParam(description = "JTable component UID") String uid,
-            @McpToolParam(description = "Zero-based row index") int row,
-            @McpToolParam(description = "Zero-based column index") int col) {
-        return ToolJson.toJson(interactionService.selectTableCell(uid, row, col));
+            @McpToolParam(description = "JTable (Swing) or TableView (JavaFX) component UID") String uid,
+            @McpToolParam(description = "Zero-based row index; omit when passing rows", required = false) Integer row,
+            @McpToolParam(description = "Zero-based column index (default 0)", required = false) Integer col,
+            @McpToolParam(description = "Add or remove this row from the selection (Ctrl/Cmd-click)", required = false) Boolean toggle,
+            @McpToolParam(description = "Select the range from the anchor row to this row (Shift-click)", required = false) Boolean extend,
+            @McpToolParam(description = "Zero-based rows that become the whole selection; [] clears it", required = false) List<Integer> rows) {
+        return ToolJson.toJson(interactionService.selectTableCell(uid, row, col, toggle, extend, rows));
     }
 
     @McpTool(name = "select_menu_item",
